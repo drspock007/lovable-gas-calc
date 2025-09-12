@@ -154,6 +154,16 @@
     scroll-behavior: smooth;
   }
 
+  /* Safe area support for mobile devices */
+  .h-safe-bottom {
+    height: env(safe-area-inset-bottom);
+  }
+
+  /* Ensure dropdowns appear above other content */
+  [data-radix-popper-content-wrapper] {
+    z-index: 9999 !important;
+  }
+
   /* KaTeX styling */
   .katex {
     font-size: 1.1em !important;
