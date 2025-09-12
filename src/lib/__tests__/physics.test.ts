@@ -1,58 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { COMMON_GASES } from '../physics';
-import { calculateOrificeFlow } from '../physics';
+import { GASES } from '../physics';
+import { computeDfromT, computeTfromD } from '../physics';
 
 describe('Physics Calculations', () => {
   describe('Gas Properties', () => {
     it('should have correct molecular weights for common gases', () => {
-      expect(COMMON_GASES.air.molecularWeight).toBeCloseTo(0.02897);
-      expect(COMMON_GASES.nitrogen.molecularWeight).toBeCloseTo(0.02801);
-      expect(COMMON_GASES.oxygen.molecularWeight).toBeCloseTo(0.032);
-      expect(COMMON_GASES.helium.molecularWeight).toBeCloseTo(0.004003);
+      expect(GASES.air.M).toBeCloseTo(0.028964);
+      expect(GASES.N2.M).toBeCloseTo(0.028014);
+      expect(GASES.O2.M).toBeCloseTo(0.031998);
+      expect(GASES.He.M).toBeCloseTo(0.004003);
     });
 
     it('should have appropriate gamma ratios', () => {
-      expect(COMMON_GASES.air.gammaRatio).toBe(1.4);
-      expect(COMMON_GASES.helium.gammaRatio).toBe(1.67);
-      expect(COMMON_GASES.methane.gammaRatio).toBe(1.32);
+      expect(GASES.air.gamma).toBe(1.4);
+      expect(GASES.He.gamma).toBe(1.67);
+      expect(GASES.CH4.gamma).toBe(1.32);
     });
   });
 
   describe('Flow Calculations', () => {
-    it('should calculate basic orifice flow', () => {
+    it('should calculate diameter from time', () => {
       const inputs = {
-        vessel: {
-          pressure1: 1000000, // 10 bar in Pa
-          pressure2: 100000,  // 1 bar in Pa
-          volume: 0.1,        // 100 L in m³
-          temperature: 293.15, // 20°C in K
-        },
-        gas: COMMON_GASES.air,
-        time: 60, // 1 minute
+        process: 'blowdown' as const,
+        solveFor: 'DfromT' as const,
+        V: 0.1,        // 100 L in m³
+        P1: 1000000,   // 10 bar in Pa
+        P2: 100000,    // 1 bar in Pa
+        T: 293.15,     // 20°C in K
+        L: 0.05,       // 5 cm
+        gas: GASES.air,
+        t: 60,         // 1 minute
       };
 
-      const results = calculateOrificeFlow(inputs);
+      const results = computeDfromT(inputs);
       
       expect(results).toBeDefined();
-      expect(results.massFlowRate).toBeGreaterThan(0);
-      expect(results.dischargeCoefficient).toBe(0.62);
-      expect(typeof results.chokedFlow).toBe('boolean');
+      expect(results.D).toBeGreaterThan(0);
+      expect(results.verdict).toBeDefined();
+      expect(Array.isArray(results.warnings)).toBe(true);
     });
 
-    it('should detect choked flow conditions', () => {
+    it('should calculate time from diameter', () => {
       const inputs = {
-        vessel: {
-          pressure1: 1000000, // 10 bar
-          pressure2: 100000,  // 1 bar (high pressure ratio)
-          volume: 0.1,
-          temperature: 293.15,
-        },
-        gas: COMMON_GASES.air,
-        diameter: 0.005, // 5mm
+        process: 'blowdown' as const,
+        solveFor: 'TfromD' as const,
+        V: 0.1,
+        P1: 1000000, // 10 bar
+        P2: 100000,  // 1 bar
+        T: 293.15,
+        L: 0.05,     // 5 cm
+        gas: GASES.air,
+        D: 0.005,    // 5mm
       };
 
-      const results = calculateOrificeFlow(inputs);
-      expect(results.chokedFlow).toBeDefined();
+      const results = computeTfromD(inputs);
+      expect(results).toBeDefined();
+      expect(results.verdict).toBeDefined();
     });
   });
 });

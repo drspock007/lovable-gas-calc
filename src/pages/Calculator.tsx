@@ -8,7 +8,7 @@ import { BottomActionBar } from '@/components/BottomActionBar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useI18n } from '@/i18n/context';
 import { UnitSystem, loadUnitPreferences, saveUnitPreferences, convertToSI } from '@/lib/units';
-import { calculateOrificeFlow, CalculationResults, COMMON_GASES } from '@/lib/physics';
+import { computeDfromT, computeTfromD, ComputeOutputs, GASES, ComputeInputs } from '@/lib/physics';
 import { Calculator as CalculatorIcon, Settings } from 'lucide-react';
 
 export const Calculator: React.FC = () => {
@@ -17,7 +17,7 @@ export const Calculator: React.FC = () => {
   
   const [mode, setMode] = useState<CalculationMode>('diameter');
   const [units, setUnits] = useState<UnitSystem>(loadUnitPreferences);
-  const [results, setResults] = useState<CalculationResults | null>(null);
+  const [results, setResults] = useState<ComputeOutputs | null>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [currentFormData, setCurrentFormData] = useState<FormData | null>(null);
@@ -40,24 +40,28 @@ export const Calculator: React.FC = () => {
       const temperatureSI = convertToSI.temperature(data.temperature, units.temperature);
       
       // Get gas properties
-      const gas = data.gasType && COMMON_GASES[data.gasType] 
-        ? COMMON_GASES[data.gasType]
+      const gas = data.gasType && GASES[data.gasType] 
+        ? GASES[data.gasType]
         : { 
-            molecularWeight: (data.molecularWeight || 29) / 1000, // Convert g/mol to kg/mol
-            gammaRatio: 1.4 
+            name: 'Custom',
+            M: (data.molecularWeight || 29) / 1000, // Convert g/mol to kg/mol
+            R: 8.314462618 / ((data.molecularWeight || 29) / 1000),
+            gamma: 1.4,
+            mu: 1.825e-5
           };
 
-      const calculationInputs = {
-        vessel: {
-          pressure1: pressure1SI,
-          pressure2: pressure2SI,
-          volume: volumeSI,
-          temperature: temperatureSI,
-        },
+      const calculationInputs: ComputeInputs = {
+        process: 'blowdown', // Default to blowdown
+        solveFor: mode === 'diameter' ? 'DfromT' : 'TfromD',
+        V: volumeSI,
+        P1: pressure1SI,
+        P2: pressure2SI,
+        T: temperatureSI,
+        L: 0.05, // Default 5cm length - should be an input
         gas,
         ...(mode === 'diameter' 
-          ? { time: convertToSI.time((data as any).time, units.time) }
-          : { diameter: convertToSI.length((data as any).diameter, units.length) }
+          ? { t: convertToSI.time((data as any).time, units.time) }
+          : { D: convertToSI.length((data as any).diameter, units.length) }
         ),
       };
 
@@ -70,7 +74,11 @@ export const Calculator: React.FC = () => {
         throw new Error(t.calculator.errors.invalidTemperature);
       }
 
-      const calculationResults = calculateOrificeFlow(calculationInputs);
+      // Call appropriate computation function
+      const calculationResults = mode === 'diameter' 
+        ? computeDfromT(calculationInputs)
+        : computeTfromD(calculationInputs);
+        
       setResults(calculationResults);
       
       toast({

@@ -3,12 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
-import { CalculationResults } from '@/lib/physics';
+import { ComputeOutputs } from '@/lib/physics';
 import { UnitSystem, convertFromSI } from '@/lib/units';
 import { CalculationMode } from './ModeSelector';
 
 interface ResultsDisplayProps {
-  results: CalculationResults | null;
+  results: ComputeOutputs | null;
   mode: CalculationMode;
   units: UnitSystem;
   error?: string;
@@ -64,24 +64,24 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Main Result */}
-        {mode === 'diameter' && results.diameter && (
+        {mode === 'diameter' && results.D && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-2">
               {t.calculator.results.calculatedDiameter}
             </h3>
             <p className="text-2xl font-bold gradient-text">
-              {convertFromSI.length(results.diameter, units.length).toFixed(2)} {t.calculator.units[units.length]}
+              {convertFromSI.length(results.D, units.length).toFixed(2)} {t.calculator.units[units.length]}
             </p>
           </div>
         )}
 
-        {mode === 'time' && results.time && (
+        {mode === 'time' && results.t && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-2">
               {t.calculator.results.calculatedTime}
             </h3>
             <p className="text-2xl font-bold gradient-text">
-              {convertFromSI.time(results.time, units.time).toFixed(1)} {t.calculator.units[units.time]}
+              {convertFromSI.time(results.t, units.time).toFixed(1)} {t.calculator.units[units.time]}
             </p>
           </div>
         )}
@@ -89,22 +89,39 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
         {/* Additional Results */}
         <div className="grid grid-cols-1 gap-3">
           <div className="flex justify-between items-center p-3 bg-secondary/50 rounded">
-            <span className="text-sm font-medium">{t.calculator.results.massFlowRate}</span>
-            <span className="font-semibold">{(results.massFlowRate * 1000).toFixed(3)} g/s</span>
-          </div>
-
-          <div className="flex justify-between items-center p-3 bg-secondary/50 rounded">
-            <span className="text-sm font-medium">Discharge Coefficient</span>
-            <span className="font-semibold">{results.dischargeCoefficient.toFixed(3)}</span>
-          </div>
-
-          <div className="flex justify-between items-center p-3 bg-secondary/50 rounded">
             <span className="text-sm font-medium">Flow Regime</span>
-            <Badge variant={results.chokedFlow ? 'destructive' : 'default'}>
-              {results.chokedFlow ? 'Choked' : 'Unchoked'}
+            <span className="font-semibold">{results.verdict}</span>
+          </div>
+
+          <div className="flex justify-between items-center p-3 bg-secondary/50 rounded">
+            <span className="text-sm font-medium">Reynolds Number</span>
+            <span className="font-semibold">{results.diagnostics.Re ? (results.diagnostics.Re as number).toFixed(0) : 'N/A'}</span>
+          </div>
+
+          <div className="flex justify-between items-center p-3 bg-secondary/50 rounded">
+            <span className="text-sm font-medium">L/D Ratio</span>
+            <span className="font-semibold">{results.diagnostics['L/D'] ? (results.diagnostics['L/D'] as number).toFixed(1) : 'N/A'}</span>
+          </div>
+
+          <div className="flex justify-between items-center p-3 bg-secondary/50 rounded">
+            <span className="text-sm font-medium">Choked Flow</span>
+            <Badge variant={results.diagnostics.choked ? 'destructive' : 'default'}>
+              {results.diagnostics.choked ? 'Yes' : 'No'}
             </Badge>
           </div>
         </div>
+
+        {/* Warnings */}
+        {results.warnings.length > 0 && (
+          <div className="mt-4 p-3 bg-warning/10 border border-warning/20 rounded">
+            <h4 className="font-semibold text-warning mb-2">Warnings:</h4>
+            <ul className="text-sm text-warning space-y-1">
+              {results.warnings.map((warning, index) => (
+                <li key={index}>• {warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

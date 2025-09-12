@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useI18n } from '@/i18n/context';
 import { UnitSystem, UNIT_SYSTEMS } from '@/lib/units';
-import { COMMON_GASES } from '@/lib/physics';
+import { GASES } from '@/lib/physics';
 import { CalculationMode } from './ModeSelector';
 
 const createFormSchema = (mode: CalculationMode) => z.object({
@@ -55,8 +55,8 @@ export const InputForm: React.FC<InputFormProps> = ({
   const selectedGas = form.watch('gasType');
 
   React.useEffect(() => {
-    if (selectedGas && COMMON_GASES[selectedGas]) {
-      form.setValue('molecularWeight', COMMON_GASES[selectedGas].molecularWeight * 1000); // Convert to g/mol
+    if (selectedGas && GASES[selectedGas]) {
+      form.setValue('molecularWeight', GASES[selectedGas].M * 1000); // Convert kg/mol to g/mol
     }
   }, [selectedGas, form]);
 
@@ -100,9 +100,9 @@ export const InputForm: React.FC<InputFormProps> = ({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {Object.keys(COMMON_GASES).map((gas) => (
+                      {Object.keys(GASES).map((gas) => (
                         <SelectItem key={gas} value={gas}>
-                          {gas.charAt(0).toUpperCase() + gas.slice(1)}
+                          {GASES[gas].name}
                         </SelectItem>
                       ))}
                     </SelectContent>
