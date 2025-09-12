@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useI18n } from '@/i18n/context';
 import { UnitSystem, UNIT_SYSTEMS } from '@/lib/units';
 import { GASES } from '@/lib/physics';
-import { CalculationMode } from './ModeSelector';
+import { ProcessType, SolveForType } from './ModeSelector';
 
-const createFormSchema = (mode: CalculationMode) => z.object({
+const createFormSchema = (process: ProcessType, solveFor: SolveForType) => z.object({
   pressure1: z.number().positive(),
   pressure2: z.number().positive(),
   volume: z.number().positive(),

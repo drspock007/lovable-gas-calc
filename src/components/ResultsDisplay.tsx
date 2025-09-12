@@ -5,18 +5,18 @@ import { CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
 import { ComputeOutputs } from '@/lib/physics';
 import { UnitSystem, convertFromSI } from '@/lib/units';
-import { CalculationMode } from './ModeSelector';
+import { SolveForType } from './ModeSelector';
 
 interface ResultsDisplayProps {
   results: ComputeOutputs | null;
-  mode: CalculationMode;
+  solveFor: SolveForType;
   units: UnitSystem;
   error?: string;
 }
 
 export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   results,
-  mode,
+  solveFor,
   units,
   error,
 }) => {
@@ -64,7 +64,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Main Result */}
-        {mode === 'diameter' && results.D && (
+        {solveFor === 'DfromT' && results.D && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-2">
               {t.calculator.results.calculatedDiameter}
@@ -75,7 +75,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
           </div>
         )}
 
-        {mode === 'time' && results.t && (
+        {solveFor === 'TfromD' && results.t && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-2">
               {t.calculator.results.calculatedTime}

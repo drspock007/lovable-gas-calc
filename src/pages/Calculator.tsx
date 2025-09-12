@@ -1,81 +1,107 @@
 import React, { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { ModeSelector, CalculationMode } from '@/components/ModeSelector';
-import { InputForm, FormData } from '@/components/InputForm';
-import { ResultsDisplay } from '@/components/ResultsDisplay';
-import { ExplanationCard } from '@/components/ExplanationCard';
-import { BottomActionBar } from '@/components/BottomActionBar';
+import { ModeSelector, ProcessType, SolveForType } from '@/components/ModeSelector';
+import { InputsCard, InputValues } from '@/components/InputsCard';
+import { ResultsCard } from '@/components/ResultsCard';
+import { ExplainCard } from '@/components/ExplainCard';
+import { StickyBottomBar } from '@/components/StickyBottomBar';
+import { SafetyFooter } from '@/components/SafetyFooter';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useI18n } from '@/i18n/context';
-import { UnitSystem, loadUnitPreferences, saveUnitPreferences, convertToSI } from '@/lib/units';
-import { computeDfromT, computeTfromD, ComputeOutputs, GASES, ComputeInputs } from '@/lib/physics';
-import { Calculator as CalculatorIcon, Settings } from 'lucide-react';
+import { 
+  computeDfromT, 
+  computeTfromD, 
+  ComputeOutputs, 
+  GASES, 
+  ComputeInputs 
+} from '@/lib/physics';
+import { 
+  pressureToSI, 
+  volumeToSI, 
+  temperatureToSI, 
+  lengthToSI, 
+  timeToSI 
+} from '@/lib/units';
+import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
 
 export const Calculator: React.FC = () => {
   const { t, language, setLanguage } = useI18n();
   const { toast } = useToast();
   
-  const [mode, setMode] = useState<CalculationMode>('diameter');
-  const [units, setUnits] = useState<UnitSystem>(loadUnitPreferences);
+  const [process, setProcess] = useState<ProcessType>('blowdown');
+  const [solveFor, setSolveFor] = useState<SolveForType>('DfromT');
+  const [inputValues, setInputValues] = useState<InputValues>({} as InputValues);
   const [results, setResults] = useState<ComputeOutputs | null>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [currentFormData, setCurrentFormData] = useState<FormData | null>(null);
 
-  const handleUnitsChange = (newUnits: UnitSystem) => {
-    setUnits(newUnits);
-    saveUnitPreferences(newUnits);
-  };
-
-  const handleCalculate = async (data: FormData) => {
+  const handleCalculate = async () => {
     setLoading(true);
     setError('');
-    setCurrentFormData(data);
 
     try {
       // Convert all inputs to SI units
-      const pressure1SI = convertToSI.pressure(data.pressure1, units.pressure);
-      const pressure2SI = convertToSI.pressure(data.pressure2, units.pressure);
-      const volumeSI = convertToSI.volume(data.volume, units.volume);
-      const temperatureSI = convertToSI.temperature(data.temperature, units.temperature);
+      const V_SI = volumeToSI(inputValues.V, inputValues.V_unit as any);
+      const P1_SI = pressureToSI(inputValues.P1, inputValues.P1_unit as any);
+      const P2_SI = pressureToSI(inputValues.P2, inputValues.P2_unit as any);
+      const T_SI = temperatureToSI(inputValues.T, inputValues.T_unit as any);
+      const L_SI = lengthToSI(inputValues.L, inputValues.L_unit as any);
       
       // Get gas properties
-      const gas = data.gasType && GASES[data.gasType] 
-        ? GASES[data.gasType]
-        : { 
-            name: 'Custom',
-            M: (data.molecularWeight || 29) / 1000, // Convert g/mol to kg/mol
-            R: 8.314462618 / ((data.molecularWeight || 29) / 1000),
-            gamma: 1.4,
-            mu: 1.825e-5
-          };
+      const gas = inputValues.gasType && GASES[inputValues.gasType] 
+        ? GASES[inputValues.gasType]
+        : inputValues.customGas || GASES.air;
 
+      // Build calculation inputs
       const calculationInputs: ComputeInputs = {
-        process: 'blowdown', // Default to blowdown
-        solveFor: mode === 'diameter' ? 'DfromT' : 'TfromD',
-        V: volumeSI,
-        P1: pressure1SI,
-        P2: pressure2SI,
-        T: temperatureSI,
-        L: 0.05, // Default 5cm length - should be an input
+        process,
+        solveFor,
+        V: V_SI,
+        P1: P1_SI,
+        P2: P2_SI,
+        T: T_SI,
+        L: L_SI,
         gas,
-        ...(mode === 'diameter' 
-          ? { t: convertToSI.time((data as any).time, units.time) }
-          : { D: convertToSI.length((data as any).diameter, units.length) }
-        ),
+        Cd: inputValues.Cd,
+        epsilon: inputValues.epsilon,
+        regime: inputValues.regime,
       };
 
+      // Add process-specific inputs
+      if (process === 'filling' && inputValues.Ps) {
+        calculationInputs.Ps = pressureToSI(inputValues.Ps, inputValues.Ps_unit as any || 'bar');
+      }
+
+      // Add solve-specific inputs
+      if (solveFor === 'DfromT' && inputValues.t) {
+        calculationInputs.t = timeToSI(inputValues.t, inputValues.t_unit as any || 'second');
+      } else if (solveFor === 'TfromD' && inputValues.D) {
+        calculationInputs.D = lengthToSI(inputValues.D, inputValues.D_unit as any || 'mm');
+      }
+
       // Validate inputs
-      if (pressure1SI <= pressure2SI) {
-        throw new Error('Initial pressure must be greater than final pressure');
+      if (P1_SI <= 0 || P2_SI <= 0) {
+        throw new Error('Pressures must be positive (absolute pressures)');
       }
 
-      if (temperatureSI <= 0) {
-        throw new Error(t.calculator.errors.invalidTemperature);
+      if (process === 'blowdown' && P1_SI <= P2_SI) {
+        throw new Error('Initial pressure must be greater than final pressure for blowdown');
       }
 
-      // Call appropriate computation function
-      const calculationResults = mode === 'diameter' 
+      if (process === 'filling' && P1_SI >= P2_SI) {
+        throw new Error('Target pressure must be greater than initial pressure for filling');
+      }
+
+      if (T_SI <= 0) {
+        throw new Error('Temperature must be above absolute zero');
+      }
+
+      if (V_SI <= 0 || L_SI <= 0) {
+        throw new Error('Volume and length must be positive');
+      }
+
+      // Perform calculation
+      const calculationResults = solveFor === 'DfromT' 
         ? computeDfromT(calculationInputs)
         : computeTfromD(calculationInputs);
         
@@ -83,18 +109,17 @@ export const Calculator: React.FC = () => {
       
       toast({
         title: "Calculation Complete",
-        description: mode === 'diameter' 
-          ? "Orifice diameter calculated successfully"
-          : "Transfer time calculated successfully",
+        description: `${solveFor === 'DfromT' ? 'Diameter' : 'Time'} calculated successfully`,
+        duration: 3000,
       });
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : t.calculator.errors.calculationError;
+      const errorMessage = err instanceof Error ? err.message : 'Calculation failed';
       setError(errorMessage);
       setResults(null);
       
       toast({
-        title: t.common.error,
+        title: "Calculation Error",
         description: errorMessage,
         variant: "destructive",
       });
@@ -106,41 +131,87 @@ export const Calculator: React.FC = () => {
   const handleClear = () => {
     setResults(null);
     setError('');
-    setCurrentFormData(null);
+    // Reset to default values
+    setInputValues({} as InputValues);
+    
     toast({
       title: "Cleared",
       description: "All inputs and results have been cleared",
     });
   };
 
-  const handleExport = () => {
-    if (!results || !currentFormData) return;
+  const handleExport = (format: 'csv' | 'pdf') => {
+    if (!results) return;
 
     const exportData = {
-      mode,
-      inputs: currentFormData,
-      units,
+      process,
+      solveFor,
+      inputs: inputValues,
       results,
       timestamp: new Date().toISOString(),
     };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',
-    });
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gas-transfer-calculation-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (format === 'csv') {
+      // Simple CSV export
+      const csvData = Object.entries(results.diagnostics)
+        .map(([key, value]) => `${key},${value}`)
+        .join('\n');
+      
+      const blob = new Blob([`Parameter,Value\n${csvData}`], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gas-transfer-results-${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      // JSON export for PDF processing
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: 'application/json',
+      });
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gas-transfer-calculation-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
 
     toast({
-      title: "Exported",
-      description: "Calculation results exported successfully",
+      title: "Export Complete",
+      description: `Results exported as ${format.toUpperCase()}`,
     });
+  };
+
+  const handleShare = () => {
+    if (!results) return;
+
+    const shareData = {
+      title: 'Gas Transfer Calculator Results',
+      text: `${solveFor === 'DfromT' ? 'Diameter' : 'Time'}: ${
+        solveFor === 'DfromT' && results.D 
+          ? `${(results.D * 1000).toFixed(2)} mm`
+          : results.t 
+          ? `${results.t.toFixed(1)} s`
+          : 'N/A'
+      }`,
+      url: window.location.href,
+    };
+
+    if (navigator.share) {
+      navigator.share(shareData);
+    } else {
+      navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
+      toast({
+        title: "Link Copied",
+        description: "Results link copied to clipboard",
+      });
+    }
   };
 
   const handleLanguageToggle = () => {
@@ -150,26 +221,35 @@ export const Calculator: React.FC = () => {
     setLanguage(nextLanguage);
   };
 
+  const canCalculate = inputValues.V && inputValues.P1 && inputValues.P2 && inputValues.T && inputValues.L &&
+    ((solveFor === 'DfromT' && inputValues.t) || (solveFor === 'TfromD' && inputValues.D));
+
   return (
     <div className="min-h-screen bg-gradient-surface">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-gradient-to-r from-background/95 to-background/90 backdrop-blur-sm border-b border-border">
-        <div className="mobile-container">
-          <div className="flex items-center justify-between py-4">
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-background/95 to-background/90 backdrop-blur-sm border-b border-border">
+        <div className="max-w-md mx-auto">
+          <div className="flex items-center justify-between px-4 py-4">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-gradient-primary rounded-lg">
                 <CalculatorIcon className="w-6 h-6 text-white" />
               </div>
               <div>
                 <h1 className="text-lg font-bold gradient-text">
-                  {t.calculator.title}
+                  Gas Transfer Calculator
                 </h1>
                 <p className="text-xs text-muted-foreground">
-                  {t.calculator.subtitle}
+                  Professional Engineering Tool
                 </p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              <button
+                onClick={handleLanguageToggle}
+                className="px-2 py-1 text-xs font-semibold bg-secondary rounded hover:bg-secondary/80"
+              >
+                {language.toUpperCase()}
+              </button>
               <ThemeToggle />
             </div>
           </div>
@@ -177,35 +257,43 @@ export const Calculator: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="mobile-container pb-32 space-y-section">
-        <ModeSelector mode={mode} onModeChange={setMode} />
+      <main className="max-w-md mx-auto px-4 pb-32 space-y-6">
+        <ModeSelector
+          process={process}
+          solveFor={solveFor}
+          onProcessChange={setProcess}
+          onSolveForChange={setSolveFor}
+        />
         
-        <InputForm
-          mode={mode}
-          units={units}
-          onUnitsChange={handleUnitsChange}
+        <InputsCard
+          process={process}
+          solveFor={solveFor}
+          values={inputValues}
+          onChange={setInputValues}
           onSubmit={handleCalculate}
           loading={loading}
         />
         
-        <ResultsDisplay
+        <ResultsCard
           results={results}
-          mode={mode}
-          units={units}
+          solveFor={solveFor}
           error={error}
+          onExport={handleExport}
+          onShare={handleShare}
         />
         
-        <ExplanationCard />
+        <ExplainCard />
       </main>
 
-      {/* Bottom Action Bar */}
-      <BottomActionBar
-        onCalculate={() => currentFormData && handleCalculate(currentFormData)}
+      {/* Safety Footer */}
+      <SafetyFooter />
+
+      {/* Sticky Bottom Bar */}
+      <StickyBottomBar
+        onCalculate={handleCalculate}
         onClear={handleClear}
-        onExport={handleExport}
-        onLanguageToggle={handleLanguageToggle}
         loading={loading}
-        hasResults={!!results}
+        disabled={!canCalculate}
       />
     </div>
   );
