@@ -46,6 +46,7 @@ export const InputForm: React.FC<InputFormProps> = ({
       pressure2: 1,
       volume: 100,
       temperature: 20,
+      molecularWeight: 29,
       gasType: 'air',
       ...(mode === 'diameter' ? { time: 60 } : { diameter: 5 }),
     },
