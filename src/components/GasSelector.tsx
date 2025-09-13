@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -39,9 +39,12 @@ export const GasSelector: React.FC<GasSelectorProps> = ({ selectedGas, onGasChan
     gamma: '1.4',
     mu: '18.1e-6',
   });
+  const initializedRef = useRef(false);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount only
   useEffect(() => {
+    if (initializedRef.current) return;
+    
     const savedGas = localStorage.getItem('gasTransfer-selectedGas');
     if (savedGas) {
       try {
@@ -63,10 +66,13 @@ export const GasSelector: React.FC<GasSelectorProps> = ({ selectedGas, onGasChan
         console.warn('Failed to load saved gas from localStorage:', error);
       }
     }
-  }, [onGasChange]);
+    initializedRef.current = true;
+  }, []);
 
-  // Save to localStorage whenever gas changes
+  // Save to localStorage only when state changes (not on selectedGas changes from parent)
   useEffect(() => {
+    if (!initializedRef.current) return;
+    
     const saveData = {
       option: selectedOption,
       isCustom,
@@ -74,7 +80,7 @@ export const GasSelector: React.FC<GasSelectorProps> = ({ selectedGas, onGasChan
       gas: selectedGas,
     };
     localStorage.setItem('gasTransfer-selectedGas', JSON.stringify(saveData));
-  }, [selectedOption, isCustom, customInputs, selectedGas]);
+  }, [selectedOption, isCustom, customInputs]);
 
   const handleGasChange = (value: string) => {
     if (value === 'custom') {
@@ -95,7 +101,9 @@ export const GasSelector: React.FC<GasSelectorProps> = ({ selectedGas, onGasChan
     setCustomInputs(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleCustomGasUpdate = () => {
+  const handleCustomGasUpdate = useCallback(() => {
+    if (!isCustom) return;
+    
     const M = parseFloat(customInputs.M);
     const gamma = parseFloat(customInputs.gamma);
     const mu = parseFloat(customInputs.mu);
@@ -116,14 +124,14 @@ export const GasSelector: React.FC<GasSelectorProps> = ({ selectedGas, onGasChan
     };
 
     onGasChange(customGas);
-  };
+  }, [customInputs, isCustom, onGasChange]);
 
   // Auto-update custom gas when inputs change
   useEffect(() => {
-    if (isCustom) {
+    if (isCustom && initializedRef.current) {
       handleCustomGasUpdate();
     }
-  }, [customInputs, isCustom]);
+  }, [customInputs, isCustom, handleCustomGasUpdate]);
 
   const PropertyTooltip: React.FC<{ property: keyof GasProps; value: number; unit: string; description: string }> = ({ 
     property, value, unit, description 
