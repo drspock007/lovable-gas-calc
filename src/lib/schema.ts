@@ -1,22 +1,16 @@
 import { z } from "zod";
 import { toSI_Pressure, absFromGauge, patmFromAltitude } from "@/lib/pressure-units";
 
-const pressureField = z.object({
-  value: z.string().min(1), // "0" passe (longueur=1)
-  unit: z.enum(["Pa","kPa","bar","MPa"])
-});
+const PField = z.object({ value: z.string().min(1), unit: z.enum(["Pa","kPa","bar","MPa"]) });
 
 export const formSchema = z.object({
   pressureInputMode: z.enum(["absolute","gauge"]),
   patmMode: z.enum(["standard","custom","altitude"]).default("standard"),
-  patmValue: pressureField.optional(),
-  altitude_m: z.union([z.number(), z.string()]).optional(),
-
+  patmValue: PField.optional(),
+  altitude_m: z.union([z.string(), z.number()]).optional(),
   process: z.enum(["blowdown","filling"]),
-  P1: pressureField,
-  P2: pressureField,
-  Ps: pressureField.optional(),
-  // ... autres champs
+  P1: PField, P2: PField, Ps: PField.optional(),
+  // ... le reste
   
   // Other common fields
   V: z.object({
@@ -45,54 +39,43 @@ export const formSchema = z.object({
   Cd: z.number().min(0.1).max(1.0).default(0.62),
   epsilon: z.number().min(0.001).max(0.1).default(0.01),
   
-}).superRefine((data, ctx) => {
+}).superRefine((d, ctx) => {
   const parse = (s: string) => {
     const n = Number((s ?? "").toString().replace(/\s/g,"").replace(",","."));
     return Number.isFinite(n) ? n : NaN;
   };
-
   const Patm_SI =
-    data.patmMode === "standard" ? 101_325 :
-    data.patmMode === "custom"   ? toSI_Pressure(parse(data.patmValue?.value ?? "101.325"), (data.patmValue?.unit ?? "kPa") as any) :
-                                   patmFromAltitude(parse(data.altitude_m as any ?? "0"));
-
-  const toAbsSI = (valStr: string, unit: string) => {
+    d.patmMode === "standard" ? 101_325 :
+    d.patmMode === "custom"   ? toSI_Pressure(parse(d.patmValue?.value ?? "101.325"), (d.patmValue?.unit ?? "kPa") as any) :
+                                patmFromAltitude(parse(d.altitude_m as any ?? "0"));
+  const toAbs = (valStr: string, unit: string) => {
     const v = toSI_Pressure(parse(valStr), unit as any);
-    return data.pressureInputMode === "gauge" ? absFromGauge(v, Patm_SI) : v;
+    return d.pressureInputMode === "gauge" ? absFromGauge(v, Patm_SI) : v;
   };
 
-  const P1_abs = toAbsSI(data.P1.value, data.P1.unit);
-  const P2_abs = toAbsSI(data.P2.value, data.P2.unit);
+  const P1_abs = toAbs(d.P1.value, d.P1.unit);
+  const P2_abs = toAbs(d.P2.value, d.P2.unit);
 
-  // Gauge : 0 est VALIDE ; on interdit seulement < -Patm (vide)
-  if (data.pressureInputMode === "gauge") {
-    const P2_g_SI = toSI_Pressure(parse(data.P2.value), data.P2.unit as any);
-    if (!Number.isFinite(P2_g_SI)) {
-      ctx.addIssue({ code:"custom", path:["P2","value"], message:"Invalid gauge pressure" });
-    }
-    if (P2_g_SI < -Patm_SI + 1) {
-      ctx.addIssue({ code:"custom", path:["P2","value"], message:"Gauge below vacuum" });
-    }
+  // En mode gauge : 0 g est VALIDE. Interdire seulement < -Patm (vide).
+  if (d.pressureInputMode === "gauge") {
+    const P2_g_SI = toSI_Pressure(parse(d.P2.value), d.P2.unit as any);
+    if (!Number.isFinite(P2_g_SI)) ctx.addIssue({ code:"custom", path:["P2","value"], message:"Invalid gauge pressure" });
+    if (P2_g_SI < -Patm_SI + 1)    ctx.addIssue({ code:"custom", path:["P2","value"], message:"Gauge below vacuum" });
   } else {
-    if (!(P2_abs > 1)) {
-      ctx.addIssue({ code:"custom", path:["P2","value"], message:"Absolute pressure must be > 0" });
-    }
+    if (!(P2_abs > 1)) ctx.addIssue({ code:"custom", path:["P2","value"], message:"Absolute pressure must be > 0" });
   }
 
-  // Gardes physiques (sur ABSOLU)
-  if (data.process === "blowdown") {
-    if (!(P1_abs > 1 && P2_abs > 1 && P1_abs > P2_abs)) {
+  if (d.process === "blowdown") {
+    if (!(P1_abs > 1 && P2_abs > 1 && P1_abs > P2_abs))
       ctx.addIssue({ code:"custom", path:["P1","value"], message:"For blowdown, P1 must exceed P2 (absolute)" });
-    }
   } else {
-    if (!data.Ps?.value) {
+    if (!d.Ps?.value) {
       ctx.addIssue({ code:"custom", path:["Ps","value"], message:"Supply pressure required in filling mode" });
       return;
     }
-    const Ps_abs = toAbsSI(data.Ps.value, data.Ps.unit);
-    if (!(Ps_abs > 1 && P1_abs > 1 && P2_abs > 1 && Ps_abs > P1_abs && P2_abs > P1_abs)) {
+    const Ps_abs = toAbs(d.Ps.value, d.Ps.unit);
+    if (!(Ps_abs > 1 && P1_abs > 1 && P2_abs > 1 && Ps_abs > P1_abs && P2_abs > P1_abs))
       ctx.addIssue({ code:"custom", path:["Ps","value"], message:"For filling, Ps>P1 and P2>P1 (absolute)" });
-    }
   }
 });
 
