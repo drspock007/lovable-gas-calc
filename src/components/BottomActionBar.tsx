@@ -83,7 +83,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
         
         {values?.debug && (
           <div className="px-4 pb-2 text-xs opacity-70 text-center">
-            disabled={String(disabled)} reason={reason}
+            reason={reason}
           </div>
         )}
       </div>
