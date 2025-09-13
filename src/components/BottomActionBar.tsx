@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calculator, RotateCcw, Download, Globe } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
+import { computeDisabledReason, type DisabledReason } from '@/lib/compute-enabled';
 
 interface BottomActionBarProps {
+  values: any;
   onCalculate: () => void;
   onClear: () => void;
   onExport: () => void;
@@ -13,6 +15,7 @@ interface BottomActionBarProps {
 }
 
 export const BottomActionBar: React.FC<BottomActionBarProps> = ({
+  values,
   onCalculate,
   onClear,
   onExport,
@@ -21,12 +24,19 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
   hasResults = false,
 }) => {
   const { t, language } = useI18n();
+  const [reason, setReason] = useState<DisabledReason>("parse-error");
+
+  useEffect(() => {
+    setReason(computeDisabledReason(values));
+  }, [values]);
 
   const getNextLanguage = () => {
     const languages = ['en', 'fr', 'it'];
     const currentIndex = languages.indexOf(language);
     return languages[(currentIndex + 1) % languages.length];
   };
+  
+  const disabled = loading || reason !== "ok";
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-background to-background/95 backdrop-blur-sm border-t border-border">
@@ -34,7 +44,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
         <div className="grid grid-cols-4 gap-2 py-4">
           <Button
             onClick={onCalculate}
-            disabled={loading}
+            disabled={disabled}
             variant="gradient"
             className="touch-target flex-col"
           >
@@ -70,6 +80,12 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
             <span className="text-xs font-semibold">{getNextLanguage().toUpperCase()}</span>
           </Button>
         </div>
+        
+        {values?.debug && (
+          <div className="px-4 pb-2 text-xs opacity-70 text-center">
+            disabled={String(disabled)} reason={reason}
+          </div>
+        )}
       </div>
     </div>
   );
