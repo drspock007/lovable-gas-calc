@@ -10,6 +10,7 @@ import { UnitInput } from './UnitInput';
 import { GasSelector } from './GasSelector';
 import { GASES, GasProps } from '@/lib/physics';
 import { ProcessType, SolveForType } from './ModeSelector';
+import { PressureUnit, toSI_Pressure, fromSI_Pressure, absFromGauge, gaugeFromAbs, patmFromAltitude, clampAbs } from '@/lib/pressure-units';
 
 export interface InputValues {
   // Core inputs
@@ -35,6 +36,12 @@ export interface InputValues {
   t_unit?: string;
   D?: number;
   D_unit?: string;
+  
+  // Pressure input mode
+  pressureInputMode: 'absolute' | 'gauge';
+  patmMode: 'standard' | 'custom' | 'altitude';
+  patmValue?: { value: number; unit: PressureUnit };
+  altitude_m?: number;
   
   // Advanced options
   epsilon: number;
@@ -63,6 +70,8 @@ const DEFAULT_VALUES: InputValues = {
   Ps: 15, Ps_unit: 'bar',
   t: 60, t_unit: 'second',
   D: 5, D_unit: 'mm',
+  pressureInputMode: 'absolute',
+  patmMode: 'standard',
   epsilon: 0.01,
   regime: 'isothermal',
   Cd: 0.62,
@@ -121,6 +130,36 @@ export const InputsCard: React.FC<InputsCardProps> = ({
     }
   };
 
+  // Helper functions for pressure conversions
+  const getAtmosphericPressure = (): number => {
+    switch (values.patmMode) {
+      case 'standard':
+        return 101325; // Pa
+      case 'custom':
+        return toSI_Pressure(values.patmValue?.value || 101.325, values.patmValue?.unit || 'kPa');
+      case 'altitude':
+        return patmFromAltitude(values.altitude_m || 0);
+      default:
+        return 101325;
+    }
+  };
+
+  const getAbsolutePressureDisplay = (gaugeValue: number, unit: string): string => {
+    const gaugeSI = toSI_Pressure(gaugeValue, unit as PressureUnit);
+    const atmSI = getAtmosphericPressure();
+    const absSI = absFromGauge(gaugeSI, atmSI);
+    const absInUnit = fromSI_Pressure(absSI, unit as PressureUnit);
+    return `${absInUnit.toFixed(3)} ${unit}`;
+  };
+
+  const getGaugePressureDisplay = (absoluteValue: number, unit: string): string => {
+    const absSI = toSI_Pressure(absoluteValue, unit as PressureUnit);
+    const atmSI = getAtmosphericPressure();
+    const gaugeSI = gaugeFromAbs(absSI, atmSI);
+    const gaugeInUnit = fromSI_Pressure(gaugeSI, unit as PressureUnit);
+    return `${gaugeInUnit.toFixed(3)} ${unit}`;
+  };
+
   return (
     <Card className="engineering-card">
       <CardHeader>
@@ -157,43 +196,181 @@ export const InputsCard: React.FC<InputsCardProps> = ({
           />
         </div>
 
+        {/* Pressure Input Mode */}
+        <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/10">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">Pressure Input Mode</label>
+            <div className="flex gap-6">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pressureMode"
+                  value="gauge"
+                  checked={values.pressureInputMode === 'gauge'}
+                  onChange={(e) => updateValue('pressureInputMode', e.target.value)}
+                  className="text-primary focus:ring-primary"
+                />
+                <span className="text-sm">Gauge (relative)</span>
+              </label>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pressureMode"
+                  value="absolute"
+                  checked={values.pressureInputMode === 'absolute'}
+                  onChange={(e) => updateValue('pressureInputMode', e.target.value)}
+                  className="text-primary focus:ring-primary"
+                />
+                <span className="text-sm">Absolute (total)</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Atmospheric Reference - only shown for gauge mode */}
+          {values.pressureInputMode === 'gauge' && (
+            <div className="space-y-3 pl-4 border-l-2 border-primary/20">
+              <label className="text-sm font-medium text-foreground">Atmospheric Reference</label>
+              <Select 
+                value={values.patmMode} 
+                onValueChange={(v: 'standard' | 'custom' | 'altitude') => updateValue('patmMode', v)}
+              >
+                <SelectTrigger className="bg-background border-border z-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-border shadow-elevated z-40">
+                  <SelectItem value="standard" className="hover:bg-accent">Standard</SelectItem>
+                  <SelectItem value="custom" className="hover:bg-accent">Custom</SelectItem>
+                  <SelectItem value="altitude" className="hover:bg-accent">Altitude</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {values.patmMode === 'standard' && (
+                <div className="text-sm text-muted-foreground">
+                  P<sub>atm</sub> = 101.325 kPa (1.01325 bar)
+                </div>
+              )}
+
+              {values.patmMode === 'custom' && (
+                <UnitInput
+                  label="Atmospheric Pressure"
+                  type="pressure"
+                  value={values.patmValue?.value || 101.325}
+                  unit={values.patmValue?.unit || 'kPa'}
+                  onChange={(v) => updateValue('patmValue', { ...values.patmValue, value: v })}
+                  onUnitChange={(u) => updateValue('patmValue', { value: values.patmValue?.value || 101.325, unit: u as PressureUnit })}
+                  required
+                  min={0}
+                />
+              )}
+
+              {values.patmMode === 'altitude' && (
+                <div className="space-y-2">
+                  <UnitInput
+                    label="Altitude"
+                    type="length"
+                    value={values.altitude_m || 0}
+                    unit="m"
+                    onChange={(v) => updateValue('altitude_m', v)}
+                    onUnitChange={() => {}} // Fixed unit
+                    required
+                    min={0}
+                  />
+                  <div className="text-sm text-muted-foreground">
+                    P<sub>atm</sub> = {(patmFromAltitude(values.altitude_m || 0) / 1000).toFixed(3)} kPa
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Pressure Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <UnitInput
-            label={process === 'blowdown' ? 'Initial Pressure' : 'Initial Pressure'}
-            type="pressure"
-            value={values.P1}
-            unit={values.P1_unit}
-            onChange={(v) => updateValue('P1', v)}
-            onUnitChange={(u) => updateValue('P1_unit', u)}
-            required
-            min={0}
-          />
+          <div className="space-y-2">
+            <UnitInput
+              label={`${process === 'blowdown' ? 'Initial Pressure' : 'Initial Pressure'} (${values.pressureInputMode})`}
+              type="pressure"
+              value={values.P1}
+              unit={values.P1_unit}
+              onChange={(v) => updateValue('P1', v)}
+              onUnitChange={(u) => updateValue('P1_unit', u)}
+              required
+              min={0}
+            />
+            {values.pressureInputMode === 'gauge' && (
+              <div className="text-xs text-muted-foreground">
+                = {getAbsolutePressureDisplay(values.P1, values.P1_unit)} abs
+              </div>
+            )}
+            {values.pressureInputMode === 'absolute' && (
+              <div className="text-xs text-muted-foreground">
+                = {getGaugePressureDisplay(values.P1, values.P1_unit)} gauge
+              </div>
+            )}
+          </div>
           
-          <UnitInput
-            label={process === 'blowdown' ? 'Final Pressure' : 'Target Pressure'}
-            type="pressure"
-            value={values.P2}
-            unit={values.P2_unit}
-            onChange={(v) => updateValue('P2', v)}
-            onUnitChange={(u) => updateValue('P2_unit', u)}
-            required
-            min={0}
-          />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <UnitInput
+                  label={`${process === 'blowdown' ? 'Final Pressure' : 'Target Pressure'} (${values.pressureInputMode})`}
+                  type="pressure"
+                  value={values.P2}
+                  unit={values.P2_unit}
+                  onChange={(v) => updateValue('P2', v)}
+                  onUnitChange={(u) => updateValue('P2_unit', u)}
+                  required
+                  min={0}
+                />
+              </div>
+              {process === 'blowdown' && values.pressureInputMode === 'gauge' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updateValue('P2', 0)}
+                  className="mt-6 whitespace-nowrap"
+                >
+                  to atmosphere
+                </Button>
+              )}
+            </div>
+            {values.pressureInputMode === 'gauge' && (
+              <div className="text-xs text-muted-foreground">
+                = {getAbsolutePressureDisplay(values.P2, values.P2_unit)} abs
+              </div>
+            )}
+            {values.pressureInputMode === 'absolute' && (
+              <div className="text-xs text-muted-foreground">
+                = {getGaugePressureDisplay(values.P2, values.P2_unit)} gauge
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Supply Pressure for Filling */}
         {process === 'filling' && (
-          <UnitInput
-            label="Supply Pressure (Ps)"
-            type="pressure"
-            value={values.Ps || 15}
-            unit={values.Ps_unit || 'bar'}
-            onChange={(v) => updateValue('Ps', v)}
-            onUnitChange={(u) => updateValue('Ps_unit', u)}
-            required
-            min={0}
-          />
+          <div className="space-y-2">
+            <UnitInput
+              label={`Supply Pressure (Ps) (${values.pressureInputMode})`}
+              type="pressure"
+              value={values.Ps || 15}
+              unit={values.Ps_unit || 'bar'}
+              onChange={(v) => updateValue('Ps', v)}
+              onUnitChange={(u) => updateValue('Ps_unit', u)}
+              required
+              min={0}
+            />
+            {values.pressureInputMode === 'gauge' && (
+              <div className="text-xs text-muted-foreground">
+                = {getAbsolutePressureDisplay(values.Ps || 15, values.Ps_unit || 'bar')} abs
+              </div>
+            )}
+            {values.pressureInputMode === 'absolute' && (
+              <div className="text-xs text-muted-foreground">
+                = {getGaugePressureDisplay(values.Ps || 15, values.Ps_unit || 'bar')} gauge
+              </div>
+            )}
+          </div>
         )}
 
         {/* Orifice/Capillary Length */}
