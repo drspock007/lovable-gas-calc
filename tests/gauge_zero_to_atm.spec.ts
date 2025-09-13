@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { toSI_Pressure, absFromGauge, patmFromAltitude } from "@/lib/pressure-units";
+import { computeDisabledReason } from "@/lib/compute-enabled";
 
 describe('Gauge Zero to Atmosphere Tests', () => {
   it('Gauge P2 = 0 is valid to atmosphere', () => {
@@ -176,5 +177,17 @@ describe('Gauge Zero to Atmosphere Tests', () => {
       const isValid = P1_abs > P2_abs;
       expect(isValid).toBe(testCase.expected_valid);
     });
+  });
+
+  it("Gauge P2 = 0 enables Compute in blowdown", () => {
+    const values = {
+      pressureInputMode: "gauge",
+      patmMode: "standard",
+      process: "blowdown",
+      P1: { value: "12", unit: "bar" },
+      P2: { value: "0", unit: "bar" }, // atmosphère
+      // champs requis minimaux pour l'appli (V, T, t/D, L, etc.) si utilisés par disabled
+    };
+    expect(computeDisabledReason(values)).toBe("ok");
   });
 });
