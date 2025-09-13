@@ -19,12 +19,12 @@ export const ExplanationCard: React.FC = () => {
       <CardHeader>
         <CardTitle className="gradient-text flex items-center">
           <BookOpen className="w-5 h-5 mr-2" />
-          {t.common.explanation}
+          {t('equations.title')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {t.calculator.results.explanation}
+          {t('appSubtitle')}
         </p>
         
         <div>

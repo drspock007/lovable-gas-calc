@@ -28,7 +28,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
         <CardHeader>
           <CardTitle className="text-destructive flex items-center">
             <AlertTriangle className="w-5 h-5 mr-2" />
-            {t.common.error}
+            Error
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -42,12 +42,12 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
     return (
       <Card className="engineering-card opacity-50">
         <CardHeader>
-          <CardTitle className="gradient-text">{t.common.results}</CardTitle>
+          <CardTitle className="gradient-text">{t('results')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center text-muted-foreground">
             <Info className="w-5 h-5 mr-2" />
-            <p>{t.common.calculate}</p>
+            <p>{t('clickCalculate')}</p>
           </div>
         </CardContent>
       </Card>
@@ -59,7 +59,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       <CardHeader>
         <CardTitle className="text-success flex items-center">
           <CheckCircle className="w-5 h-5 mr-2" />
-          {t.common.results}
+          {t('results')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -67,10 +67,10 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
         {solveFor === 'DfromT' && results.D && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-2">
-              {t.calculator.results.calculatedDiameter}
+              {t('orificeDiameter')}
             </h3>
             <p className="text-2xl font-bold gradient-text">
-              {convertFromSI.length(results.D, units.length).toFixed(2)} {t.calculator.units[units.length]}
+              {convertFromSI.length(results.D, units.length).toFixed(2)} {t(`units.${units.length}`)}
             </p>
           </div>
         )}
@@ -78,10 +78,10 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
         {solveFor === 'TfromD' && results.t && (
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
             <h3 className="font-semibold text-primary mb-2">
-              {t.calculator.results.calculatedTime}
+              {t('transferTime')}
             </h3>
             <p className="text-2xl font-bold gradient-text">
-              {convertFromSI.time(results.t, units.time).toFixed(1)} {t.calculator.units[units.time]}
+              {convertFromSI.time(results.t, units.time).toFixed(1)} {t(`units.${units.time}`)}
             </p>
           </div>
         )}

@@ -39,7 +39,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
             className="touch-target flex-col"
           >
             <Calculator className="w-5 h-5 mb-1" />
-            <span className="text-xs">{t.common.calculate}</span>
+            <span className="text-xs">{t('calculate')}</span>
           </Button>
           
           <Button
@@ -48,7 +48,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
             className="touch-target flex-col"
           >
             <RotateCcw className="w-5 h-5 mb-1" />
-            <span className="text-xs">{t.common.clear}</span>
+            <span className="text-xs">{t('clear')}</span>
           </Button>
           
           <Button
@@ -58,7 +58,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
             className="touch-target flex-col"
           >
             <Download className="w-5 h-5 mb-1" />
-            <span className="text-xs">{t.common.export}</span>
+            <span className="text-xs">{t('export')}</span>
           </Button>
           
           <Button
