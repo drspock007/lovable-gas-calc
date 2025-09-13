@@ -161,6 +161,37 @@ const EXAMPLE_PRESETS: ExamplePreset[] = [
       'Diameter should be micrometric (1-100 μm)',
       'Validates dimensional analysis and unit conversion'
     ]
+  },
+  {
+    id: 'gio-mm3-sanity-debug',
+    name: 'Gio — mm³ sanity (debug)',
+    description: 'Debug-focused micro-volume case - validates unit conversion and formatting precision',
+    category: 'blowdown',
+    inputs: {
+      V: 200,          // 200 mm³
+      V_unit: 'mm3',
+      P1: 1200,        // 1200 kPa
+      P1_unit: 'kPa',
+      P2: 1,           // 1 kPa
+      P2_unit: 'kPa',
+      T: 15,           // 15°C
+      T_unit: 'celsius',
+      L: 2,            // 2 mm
+      L_unit: 'mm',
+      t: 175,          // 175 seconds
+      t_unit: 'second',
+      gasType: 'air',
+      regime: 'isothermal',
+      Cd: 0.62,
+      epsilon: 0.01,
+    },
+    expectedResult: 'D ≈ 9 μm (L/D ≈ 222)',
+    learningPoints: [
+      'Expected: D_SI ≈ 9e-6 m → 0.009 mm in display',
+      'L/D = 2 mm / 0.009 mm ≈ 222 (borderline regime)',
+      'Test case for formatLength() precision validation',
+      'Debug mode reveals SI vs display value consistency'
+    ]
   }
 ];
 
