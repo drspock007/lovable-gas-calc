@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Calculator, RotateCcw, Download, Globe } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
 import { computeDisabledReason, type DisabledReason } from '@/lib/compute-enabled';
+import { toSI_Pressure, absFromGauge, patmFromAltitude } from '@/lib/pressure-units';
 
 interface BottomActionBarProps {
   values: any;
@@ -27,7 +28,39 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
   const [reason, setReason] = useState<DisabledReason>("parse-error");
 
   useEffect(() => {
-    setReason(computeDisabledReason(values));
+    const newReason = computeDisabledReason(values);
+    setReason(newReason);
+    
+    // Debug logging when debug mode is enabled
+    if (values?.debug) {
+      const parseFlexible = (s: unknown): number => {
+        if (typeof s !== "string") return NaN;
+        const t = s.replace(/\s/g, "").replace(",", ".");
+        const n = Number(t);
+        return Number.isFinite(n) ? n : NaN;
+      };
+
+      const { pressureInputMode, patmMode, patmValue, altitude_m, P1, P2 } = values;
+      
+      const Patm_SI =
+        patmMode === "standard" ? 101_325 :
+        patmMode === "custom"
+          ? toSI_Pressure(parseFlexible(patmValue?.value ?? "101.325"), (patmValue?.unit ?? "kPa") as any)
+          : patmFromAltitude(parseFlexible(altitude_m ?? "0"));
+
+      const toAbs = (valStr: string, u: string) => {
+        const x = toSI_Pressure(parseFlexible(valStr), u as any);
+        if (!Number.isFinite(x)) return NaN;
+        return pressureInputMode === "gauge" ? absFromGauge(x, Patm_SI) : x;
+      };
+
+      const P1_abs = toAbs(P1?.value ?? "", P1?.unit ?? "kPa");
+      const P2_abs = toAbs(P2?.value ?? "", P2?.unit ?? "kPa");
+
+      console.info("[ABS CHECK]", {
+        P1_abs, P2_abs, Patm_SI, reason: newReason
+      });
+    }
   }, [values]);
 
   const getNextLanguage = () => {
