@@ -630,6 +630,75 @@ function orificeTfromD_blowdown(inputs: ComputeInputs): number {
   }
 }
 
+/**
+ * Compute the integral I (independent of A) for orifice blowdown
+ * Returns I for P1→Pf with sonic split if needed
+ * @param P1 Initial pressure [Pa]
+ * @param P2 Exit pressure [Pa]  
+ * @param T Temperature [K]
+ * @param gamma Heat capacity ratio [-]
+ * @param R Specific gas constant [J/(kg·K)]
+ * @param epsilon Convergence tolerance [-]
+ * @returns Object containing integral I [-]
+ */
+function orificeIsothermalIntegral(P1: number, P2: number, T: number, gamma: number, R: number, epsilon: number = 0.01): { I: number } {
+  // Guard epsilon
+  const eps = clamp(epsilon, 1e-3, 0.1);
+  
+  const rc = criticalRatio(gamma);
+  const cstar = Cstar(gamma, R, T);
+  const kCoeff = K(gamma, R, T);
+  const Pf = P2 * (1 + eps);
+  
+  // Critical pressure
+  const Pstar = P2 / rc;
+  
+  if (P1 <= Pstar) {
+    // Only subcritical flow
+    const I_sub = subcriticalIntegralBlowdown(P2, P1, Pf, gamma);
+    return { I: (1 / kCoeff) * I_sub };
+  } else {
+    // Split into sonic and subsonic phases
+    const I_sonic = Math.log(P1 / Pstar) / cstar;
+    const I_sub = subcriticalIntegralBlowdown(P2, Pstar, Pf, gamma);
+    const I_subsonic = (1 / kCoeff) * I_sub;
+    
+    return { I: I_sonic + I_subsonic };
+  }
+}
+
+/**
+ * Solve for orifice diameter from time using isothermal integral method
+ * @param inputs Computation inputs
+ * @returns Solver result with explicit SI units
+ */
+function solveOrifice_DfromT_isothermal(inputs: ComputeInputs): SolverResultSI {
+  const { V, P1, P2, T, gas: { R, gamma }, Cd = 0.62, epsilon = 0.01, t } = inputs;
+  
+  if (!t) {
+    throw new Error('Target time t is required for isothermal solver');
+  }
+  
+  // Compute integral I independent of A
+  const { I } = orificeIsothermalIntegral(P1, P2, T, gamma, R, epsilon);
+  
+  // t = (V / (R T Cd A)) * I  =>  A = (V / (R T Cd t)) * I
+  const A = (V / (R * T * Cd * t)) * I;
+  const D = Math.sqrt(4 * A / Math.PI);
+  
+  // Residual check
+  const t_check = timeOrificeFromAreaSI(inputs, A);
+  
+  return {
+    model: 'orifice',
+    A_SI_m2: A,
+    D_SI_m: D,
+    t_SI_s: t_check,
+    diag: { I_total: I },
+    warnings: []
+  };
+}
+
 // ============= ROBUST ROOT FINDING FOR D FROM T =============
 
 // ============= BRACKET PERSISTENCE =============
