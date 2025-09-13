@@ -155,7 +155,8 @@ export const Calculator: React.FC = () => {
         variant: "destructive",
       });
     } finally {
-    setLoading(false);
+      setLoading(false);
+    }
   };
 
   const getSelectedGas = () => {
@@ -173,18 +174,18 @@ export const Calculator: React.FC = () => {
     return {
       process,
       solveFor,
-      V: volumeToSI(inputValues.V, inputValues.V_unit),
-      P1: pressureToSI(inputValues.P1, inputValues.P1_unit),
-      P2: pressureToSI(inputValues.P2, inputValues.P2_unit),
-      T: temperatureToSI(inputValues.T, inputValues.T_unit),
-      L: lengthToSI(inputValues.L, inputValues.L_unit),
+      V: volumeToSI(inputValues.V, inputValues.V_unit as any),
+      P1: pressureToSI(inputValues.P1, inputValues.P1_unit as any),
+      P2: pressureToSI(inputValues.P2, inputValues.P2_unit as any),
+      T: temperatureToSI(inputValues.T, inputValues.T_unit as any),
+      L: lengthToSI(inputValues.L, inputValues.L_unit as any),
       gas: getSelectedGas(),
       Cd: inputValues.Cd,
       epsilon: inputValues.epsilon,
       regime: inputValues.regime,
-      ...(process === 'filling' && inputValues.Ps && { Ps: pressureToSI(inputValues.Ps, inputValues.Ps_unit || 'bar') }),
-      ...(solveFor === 'TfromD' && inputValues.D && { D: lengthToSI(inputValues.D, inputValues.D_unit || 'mm') }),
-      ...(solveFor === 'DfromT' && inputValues.t && { t: timeToSI(inputValues.t, inputValues.t_unit || 'second') }),
+      ...(process === 'filling' && inputValues.Ps && { Ps: pressureToSI(inputValues.Ps, (inputValues.Ps_unit || 'bar') as any) }),
+      ...(solveFor === 'TfromD' && inputValues.D && { D: lengthToSI(inputValues.D, (inputValues.D_unit || 'mm') as any) }),
+      ...(solveFor === 'DfromT' && inputValues.t && { t: timeToSI(inputValues.t, (inputValues.t_unit || 'second') as any) }),
     };
   }, [inputValues, process, solveFor, getSelectedGas]);
 
