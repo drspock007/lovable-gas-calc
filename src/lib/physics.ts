@@ -140,6 +140,28 @@ export interface ComputeOutputs {
   warnings: string[];
   /** Detailed error information if computation fails */
   error?: ComputationError;
+  /** Sampling data for debug display */
+  sampling?: SamplingData;
+}
+
+/**
+ * Sampling data for debug diagnostics
+ */
+export interface SamplingData {
+  samples: Array<{
+    A: number;
+    D_mm: number;
+    t_model: number;
+  }>;
+  bracketInfo: {
+    A_lo: number;
+    A_hi: number;
+    t_A_lo: number;
+    t_A_hi: number;
+    expansions: number;
+  };
+  monotonic: boolean;
+  warnings: string[];
 }
 
 /** Universal gas constant [J/(mol·K)] */
@@ -645,7 +667,7 @@ function loadBracketFromCache(process: string, gasName: string): [number, number
  * @param inputs Computation inputs
  * @returns Computed diameter [m]
  */
-function solveOrificeDfromT(inputs: ComputeInputs): number {
+function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: SamplingData } {
   const t_target = inputs.t!;
   const gasName = inputs.gas.name || 'unknown';
   
@@ -662,6 +684,18 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
     }
     
     return t_calc - t_target;
+  };
+  
+  // Define time function for sampling
+  const timeFunction = (A: number): number => {
+    const D = Math.sqrt(4 * A / Math.PI);
+    const testInputs = { ...inputs, D };
+    
+    if (inputs.process === 'blowdown') {
+      return orificeTfromD_blowdown(testInputs);
+    } else {
+      return orificeTfromD_filling(testInputs);
+    }
   };
   
   // Try to load cached bracket first
@@ -714,6 +748,62 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
       { A_lo, A_hi, expansions, t_target }
     );
   }
+
+  // Sample t(A) at 5 log-spaced points for debugging
+  const samplingData: SamplingData = {
+    samples: [],
+    bracketInfo: {
+      A_lo,
+      A_hi,
+      t_A_lo: 0,
+      t_A_hi: 0,
+      expansions
+    },
+    monotonic: true,
+    warnings: []
+  };
+
+  try {
+    // Calculate bracket endpoint times
+    samplingData.bracketInfo.t_A_lo = timeFunction(A_lo);
+    samplingData.bracketInfo.t_A_hi = timeFunction(A_hi);
+
+    // Generate 5 log-spaced A values
+    const logA_lo = Math.log10(A_lo);
+    const logA_hi = Math.log10(A_hi);
+    const deltaLog = (logA_hi - logA_lo) / 4;
+    
+    for (let i = 0; i < 5; i++) {
+      const logA = logA_lo + i * deltaLog;
+      const A = Math.pow(10, logA);
+      const D_mm = Math.sqrt(4 * A / Math.PI) * 1000; // Convert to mm
+      const t_model = timeFunction(A);
+      
+      samplingData.samples.push({ A, D_mm, t_model });
+    }
+
+    // Check monotonicity: t should be strictly decreasing with A
+    let isMonotonic = true;
+    const tolerance = 1e-6; // Small tolerance for numerical errors
+    
+    for (let i = 1; i < samplingData.samples.length; i++) {
+      const t_prev = samplingData.samples[i-1].t_model;
+      const t_curr = samplingData.samples[i].t_model;
+      
+      if (t_curr >= t_prev * (1 - tolerance)) {
+        isMonotonic = false;
+        break;
+      }
+    }
+    
+    samplingData.monotonic = isMonotonic;
+    
+    if (!isMonotonic) {
+      samplingData.warnings.push('t(A) is not strictly decreasing - consider adjusting ε or shrinking domain');
+    }
+  } catch (error) {
+    samplingData.warnings.push(`Sampling failed: ${(error as Error).message}`);
+  }
   
   // Use Brent's method for robust root finding
   const A_solution = brent(objectiveFunction, [A_lo, A_hi], {
@@ -742,7 +832,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
     );
   }
   
-  return D;
+  return { D, sampling: samplingData };
 }
 
 /**
@@ -1035,8 +1125,11 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     }
     
     // 2) Compute D_orif via orifice model (robust root finding)
+    let samplingData: SamplingData | undefined;
     try {
-      D_orifice = solveOrificeDfromT(inputs);
+      const result = solveOrificeDfromT(inputs);
+      D_orifice = result.D;
+      samplingData = result.sampling;
     } catch (error) {
       if (error instanceof BracketError) {
         orifice_error = `Solver could not bracket the solution. Try increasing target time, widening A bounds, or set ε=1% (default).`;
@@ -1151,6 +1244,19 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     const diagnostics = calculateDiagnostics(inputs, D);
     diagnostics.rationale = rationale;
     
+    // Add bracket endpoint info to diagnostics if available
+    if (samplingData) {
+      diagnostics['t(A_lo)'] = samplingData.bracketInfo.t_A_lo;
+      diagnostics['t(A_hi)'] = samplingData.bracketInfo.t_A_hi;
+      diagnostics.expansions = samplingData.bracketInfo.expansions;
+      
+      // Add monotonicity warning if needed
+      if (!samplingData.monotonic) {
+        warnings.push('Sampling detected non-monotonic t(A) - results may be unreliable');
+      }
+      warnings.push(...samplingData.warnings);
+    }
+    
     // Add alternative results if both computed
     if (D_capillary && D_orifice && D_capillary !== D_orifice) {
       diagnostics.D_capillary = D_capillary;
@@ -1194,6 +1300,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       verdict,
       diagnostics,
       warnings: [...warnings, ...modelWarnings],
+      sampling: samplingData,
     };
     
   } catch (error) {
@@ -1386,9 +1493,13 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
     let D_check: number;
     try {
       if (inputs.process === 'blowdown') {
-        D_check = capillaryDfromT_blowdown({ ...inputs, t }) || solveOrificeDfromT({ ...inputs, t });
+        const capResult = capillaryDfromT_blowdown({ ...inputs, t });
+        const oriResult = solveOrificeDfromT({ ...inputs, t });
+        D_check = capResult || oriResult.D;
       } else {
-        D_check = capillaryDfromT_filling({ ...inputs, t }) || solveOrificeDfromT({ ...inputs, t });
+        const capResult = capillaryDfromT_filling({ ...inputs, t });
+        const oriResult = solveOrificeDfromT({ ...inputs, t });
+        D_check = capResult || oriResult.D;
       }
       
       // Convert to area and back to check consistency

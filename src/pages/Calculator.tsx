@@ -441,6 +441,7 @@ export const Calculator: React.FC = () => {
                 debugMode={debugMode}
                 onDebugToggle={setDebugMode}
                 siInputs={computeInputs}
+                samplingData={results?.sampling || null}
               />
             </div>
           </div>
