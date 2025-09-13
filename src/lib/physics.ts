@@ -673,30 +673,13 @@ function orificeIsothermalIntegral(P1: number, P2: number, T: number, gamma: num
  * @returns Solver result with explicit SI units
  */
 function solveOrifice_DfromT_isothermal(inputs: ComputeInputs): SolverResultSI {
-  const { V, P1, P2, T, gas: { R, gamma }, Cd = 0.62, epsilon = 0.01, t } = inputs;
-  
-  if (!t) {
-    throw new Error('Target time t is required for isothermal solver');
-  }
-  
-  // Compute integral I independent of A
+  const {V, P1, P2, T, gas: {R, gamma}, Cd = 0.62, epsilon = 0.01, t: t_target} = inputs;
   const { I } = orificeIsothermalIntegral(P1, P2, T, gamma, R, epsilon);
-  
-  // t = (V / (R T Cd A)) * I  =>  A = (V / (R T Cd t)) * I
-  const A = (V / (R * T * Cd * t)) * I;
-  const D = Math.sqrt(4 * A / Math.PI);
-  
-  // Residual check
-  const t_check = timeOrificeFromAreaSI(inputs, A);
-  
-  return {
-    model: 'orifice',
-    A_SI_m2: A,
-    D_SI_m: D,
-    t_SI_s: t_check,
-    diag: { I_total: I },
-    warnings: []
-  };
+  // t = (V/(R T Cd A)) * I  =>  A = (V/(R T Cd t)) * I
+  const A = (V/(R*T*Cd*t_target)) * I;
+  const D = Math.sqrt(4*A/Math.PI);
+  const t_check = timeOrificeFromAreaSI(inputs, A); // reuse exact same integrator
+  return { model:'orifice', A_SI_m2:A, D_SI_m:D, t_SI_s:t_check, diag:{I_total:I}, warnings:[] };
 }
 
 // ============= ROBUST ROOT FINDING FOR D FROM T =============
