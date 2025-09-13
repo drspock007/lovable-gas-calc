@@ -179,6 +179,17 @@ describe('Gauge Zero to Atmosphere Tests', () => {
     });
   });
 
+  it("P2 = 0 bar g active le bouton (blowdown)", () => {
+    const values = {
+      pressureInputMode: "gauge",
+      patmMode: "standard",
+      process: "blowdown",
+      P1: { value: "12", unit: "bar" },
+      P2: { value: "0",  unit: "bar" },
+    };
+    expect(computeDisabledReason(values)).toBe("ok");
+  });
+
   it("Gauge P2 = 0 enables Compute in blowdown", () => {
     const values = {
       pressureInputMode: "gauge",
