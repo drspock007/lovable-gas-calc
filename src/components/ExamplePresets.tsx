@@ -26,6 +26,74 @@ interface ExamplePresetsProps {
 
 const EXAMPLE_PRESETS: ExamplePreset[] = [
   {
+    id: 'blowdown-atmosphere-gauge',
+    name: 'Blowdown to Atmosphere (Gauge)',
+    description: 'Vessel blowdown to atmospheric pressure using gauge pressures - demonstrates practical gauge mode',
+    category: 'blowdown',
+    inputs: {
+      V: 1,            // 1L vessel
+      V_unit: 'liter',
+      P1: 12,          // 12 bar gauge
+      P1_unit: 'bar',
+      P2: 0,           // 0 bar gauge (atmosphere)
+      P2_unit: 'bar',
+      T: 20,           // 20°C
+      T_unit: 'celsius',
+      L: 1,            // 1mm length
+      L_unit: 'mm',
+      t: 60,           // 60 seconds
+      t_unit: 'second',
+      gasType: 'air',
+      regime: 'isothermal',
+      Cd: 0.62,
+      epsilon: 0.01,
+      pressureInputMode: 'gauge',
+      patmMode: 'standard',
+    },
+    expectedResult: 'D ≈ 2-4 mm',
+    learningPoints: [
+      'Gauge pressure mode: P2 = 0 bar g = atmospheric pressure',
+      '"to atmosphere" button sets P2 = 0 in gauge mode',
+      'Physics receives absolute pressures: P1 ≈ 13.01 bar abs, P2 ≈ 1.01 bar abs',
+      'Practical industrial scenario with gauge pressure instrumentation'
+    ]
+  },
+  {
+    id: 'filling-compressor-gauge-TfromD',
+    name: 'Filling from Compressor (Gauge)',
+    description: 'Tank filling from compressed air supply using gauge pressures - solve time from diameter',
+    category: 'filling',
+    inputs: {
+      V: 5,            // 5L vessel
+      V_unit: 'liter',
+      P1: 0,           // 0 bar gauge (atmospheric start)
+      P1_unit: 'bar',
+      P2: 5,           // 5 bar gauge target
+      P2_unit: 'bar',
+      Ps: 8,           // 8 bar gauge supply
+      Ps_unit: 'bar',
+      T: 20,           // 20°C
+      T_unit: 'celsius',
+      L: 2,            // 2mm length (estimated)
+      L_unit: 'mm',
+      D: 1.5,          // 1.5mm diameter (given)
+      D_unit: 'mm',
+      gasType: 'air',
+      regime: 'isothermal',
+      Cd: 0.62,
+      epsilon: 0.01,
+      pressureInputMode: 'gauge',
+      patmMode: 'standard',
+    },
+    expectedResult: 't ≈ 30-90 seconds',
+    learningPoints: [
+      'Filling scenario: P1 < P2 < Ps (all gauge pressures)',
+      'Supply pressure must exceed target for filling to work',
+      'Solve for time given orifice diameter',
+      'Compare gauge vs absolute pressure physical equivalence'
+    ]
+  },
+  {
     id: 'air-blowdown-orifice',
     name: 'Air Blowdown - Thin Plate',
     description: 'Small pressure vessel with thin orifice plate - demonstrates choked flow',
