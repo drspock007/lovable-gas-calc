@@ -60,10 +60,47 @@ export interface ComputeInputs {
  * Detailed error information for actionable feedback
  */
 export interface ComputationError {
-  type: 'convergence' | 'bracketing' | 'numerical' | 'input' | 'model';
+  type: 'convergence' | 'bracketing' | 'numerical' | 'input' | 'model' | 'integral';
   message: string;
   details?: Record<string, any>;
   suggestions?: string[];
+}
+
+/**
+ * Specific error types for better user feedback
+ */
+export class BracketError extends Error {
+  type = 'bracketing' as const;
+  details: Record<string, any>;
+  suggestions: string[];
+  
+  constructor(message: string, details: Record<string, any> = {}) {
+    super(message);
+    this.name = 'BracketError';
+    this.details = details;
+    this.suggestions = [
+      'Try increasing target time',
+      'Widen A bounds in solver settings', 
+      'Set ε=1% (default) for more stable convergence'
+    ];
+  }
+}
+
+export class IntegralError extends Error {
+  type = 'integral' as const;
+  details: Record<string, any>;
+  suggestions: string[];
+  
+  constructor(message: string, details: Record<string, any> = {}) {
+    super(message);
+    this.name = 'IntegralError';
+    this.details = details;
+    this.suggestions = [
+      'Increase ε (e.g., 1–2%) for more stable integration',
+      'Choose adiabatic=false (isothermal) for simpler model',
+      'Check pressure conditions are physically reasonable'
+    ];
+  }
 }
 
 /**
@@ -416,8 +453,20 @@ function subcriticalIntegralBlowdown(P2: number, Pstar: number, Pf: number, gamm
   try {
     return adaptiveSimpson(integrand, y_lo, Math.min(y_hi, 1-eps), 1e-7, 1e-12);
   } catch (error) {
-    // Fallback to zero if integration fails
-    return 0;
+    // Throw specific integral error for better user feedback
+    throw new IntegralError(
+      'Integral near target pressure is too stiff for numerical integration',
+      { 
+        y_lo, 
+        y_hi, 
+        eps, 
+        P2, 
+        Pstar, 
+        Pf, 
+        gamma,
+        integration_bounds: { y_lo, y_hi: Math.min(y_hi, 1-eps) }
+      }
+    );
   }
 }
 
@@ -469,8 +518,20 @@ function subcriticalIntegralFilling(Ps: number, Pstar: number, Pf: number, gamma
   try {
     return adaptiveSimpson(integrand, z_lo, Math.min(z_hi, 1-eps), 1e-7, 1e-12);
   } catch (error) {
-    // Fallback to zero if integration fails
-    return 0;
+    // Throw specific integral error for better user feedback
+    throw new IntegralError(
+      'Integral near target pressure is too stiff for numerical integration',
+      { 
+        z_lo, 
+        z_hi, 
+        eps, 
+        Ps, 
+        Pstar, 
+        Pf, 
+        gamma,
+        integration_bounds: { z_lo, z_hi: Math.min(z_hi, 1-eps) }
+      }
+    );
   }
 }
 
@@ -572,17 +633,10 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
   }
   
   if (expansions >= maxExpansions) {
-    const error: ComputationError = {
-      type: 'bracketing',
-      message: `Failed to bracket root after ${maxExpansions} expansions`,
-      details: { A_lo, A_hi, expansions },
-      suggestions: [
-        'Check that input pressures are physically reasonable',
-        'Verify that the time target is achievable with the given vessel geometry',
-        'Consider using a different flow model or checking for choked flow conditions'
-      ]
-    };
-    throw error;
+    throw new BracketError(
+      `Solver could not bracket the solution after ${maxExpansions} expansions`,
+      { A_lo, A_hi, expansions, t_target }
+    );
   }
   
   // Use Brent's method for robust root finding
@@ -592,17 +646,10 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
   });
   
   if (A_solution === null) {
-    const error: ComputationError = {
-      type: 'convergence',
-      message: 'Root finding failed to converge',
-      details: { A_lo, A_hi, method: 'Brent' },
-      suggestions: [
-        'The orifice model may not have a valid solution for the given parameters',
-        'Try adjusting the time target or pressure conditions',
-        'Check for numerical issues in the flow equations'
-      ]
-    };
-    throw error;
+    throw new BracketError(
+      'Root finding failed to converge - solver could not bracket the solution',
+      { A_lo, A_hi, method: 'Brent', t_target }
+    );
   }
   
   // Convert area back to diameter
@@ -610,17 +657,105 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
   
   // Sanity check
   if (D <= 0 || D > 1.0) {
-    const error: ComputationError = {
-      type: 'numerical',
-      message: `Computed diameter ${D.toExponential(3)} m is outside reasonable bounds`,
-      details: { D, A_solution },
-      suggestions: [
-        'Check input parameters for physical consistency',
-        'Verify that the problem setup is correct',
-        'Consider whether the orifice model is appropriate for this scenario'
-      ]
-    };
-    throw error;
+    throw new BracketError(
+      `Computed diameter ${D.toExponential(3)} m is outside reasonable bounds`,
+      { D, A_solution, t_target }
+    );
+  }
+  
+  return D;
+}
+
+/**
+ * Export the retry function for external use
+ */
+export { solveOrificeDfromTWithRetry };
+
+/**
+ * Enhanced solver with expanded bounds for retry attempts
+ */
+function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number = 1): number {
+  const t_target = inputs.t!;
+  
+  // Define objective function f(A) = t_model(A) - t_target
+  const objectiveFunction = (A: number): number => {
+    const D = Math.sqrt(4 * A / Math.PI);
+    const testInputs = { ...inputs, D };
+    
+    let t_calc: number;
+    if (inputs.process === 'blowdown') {
+      t_calc = orificeTfromD_blowdown(testInputs);
+    } else {
+      t_calc = orificeTfromD_filling(testInputs);
+    }
+    
+    return t_calc - t_target;
+  };
+  
+  // Expanded initial bracket
+  let A_lo = 1e-12 / Math.pow(expandFactor, 2); // Divide A_lo by expandFactor^2
+  let A_hi = 1e-2 * Math.pow(expandFactor, 2);  // Multiply A_hi by expandFactor^2
+  
+  // Auto-expand bracket up to 12 times
+  let expansions = 0;
+  const maxExpansions = 12;
+  
+  while (expansions < maxExpansions) {
+    try {
+      const f_lo = objectiveFunction(A_lo);
+      const f_hi = objectiveFunction(A_hi);
+      
+      // Check if we have proper bracketing
+      if (f_lo * f_hi < 0) {
+        break; // We have a bracket
+      }
+      
+      // Expand bracket
+      if (f_lo < 0) {
+        A_lo /= 10;
+      }
+      if (f_hi > 0) {
+        A_hi *= 10;
+      }
+      
+      expansions++;
+    } catch (error) {
+      // If evaluation fails, try expanding
+      A_lo /= 10;
+      A_hi *= 10;
+      expansions++;
+    }
+  }
+  
+  if (expansions >= maxExpansions) {
+    throw new BracketError(
+      `Solver could not bracket the solution after ${maxExpansions} expansions (retry attempt)`,
+      { A_lo, A_hi, expansions, t_target, expandFactor }
+    );
+  }
+  
+  // Use Brent's method for robust root finding
+  const A_solution = brent(objectiveFunction, [A_lo, A_hi], {
+    tolerance: 1e-6,
+    maxIterations: 200
+  });
+  
+  if (A_solution === null) {
+    throw new BracketError(
+      'Root finding failed to converge - solver could not bracket the solution (retry attempt)',
+      { A_lo, A_hi, method: 'Brent', t_target, expandFactor }
+    );
+  }
+  
+  // Convert area back to diameter
+  const D = Math.sqrt(4 * A_solution / Math.PI);
+  
+  // Sanity check
+  if (D <= 0 || D > 1.0) {
+    throw new BracketError(
+      `Computed diameter ${D.toExponential(3)} m is outside reasonable bounds (retry attempt)`,
+      { D, A_solution, t_target, expandFactor }
+    );
   }
   
   return D;
@@ -689,13 +824,13 @@ function calculateDiagnostics(inputs: ComputeInputs, D: number): Record<string, 
     isChoked = P1 > Pstar;
     
     if (isChoked) {
-      // Throat conditions at sonic state
+      // Throat conditions at sonic state - Mach is exactly 1 at choking
       const T_t = T * 2 / (gamma + 1);
       const P_t = P1 * Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
       const a_t = Math.sqrt(gamma * R * T_t);
       rho = P_t / (R * T_t);
       v = a_t;
-      Mach = 1.0;
+      Mach = 1.0; // Exactly 1 at sonic choking
       P_exit = P_t;
     } else {
       // Subsonic conditions
@@ -714,13 +849,13 @@ function calculateDiagnostics(inputs: ComputeInputs, D: number): Record<string, 
     isChoked = P1 < Pstar;
     
     if (isChoked) {
-      // Throat conditions at sonic state
+      // Throat conditions at sonic state - Mach is exactly 1 at choking
       const T_t = T * 2 / (gamma + 1);
       const P_t = Ps_val * Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
       const a_t = Math.sqrt(gamma * R * T_t);
       rho = P_t / (R * T_t);
       v = a_t;
-      Mach = 1.0;
+      Mach = 1.0; // Exactly 1 at sonic choking
       P_exit = P_t;
     } else {
       // Subsonic conditions
@@ -809,7 +944,11 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     try {
       D_orifice = solveOrificeDfromT(inputs);
     } catch (error) {
-      if (typeof error === 'object' && error !== null && 'type' in error) {
+      if (error instanceof BracketError) {
+        orifice_error = `Solver could not bracket the solution. Try increasing target time, widening A bounds, or set ε=1% (default).`;
+      } else if (error instanceof IntegralError) {
+        orifice_error = `Integral near target pressure is too stiff. Increase ε (e.g., 1–2%) or choose adiabatic=false (isothermal).`;
+      } else if (typeof error === 'object' && error !== null && 'type' in error) {
         const compError = error as ComputationError;
         orifice_error = `Orifice model ${compError.type} error: ${compError.message}`;
         if (compError.suggestions && compError.suggestions.length > 0) {
@@ -921,7 +1060,14 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
   } catch (error) {
     let computationError: ComputationError;
     
-    if (typeof error === 'object' && error !== null && 'type' in error) {
+    if (error instanceof BracketError || error instanceof IntegralError) {
+      computationError = {
+        type: error.type,
+        message: error.message,
+        details: error.details,
+        suggestions: error.suggestions
+      };
+    } else if (typeof error === 'object' && error !== null && 'type' in error) {
       computationError = error as ComputationError;
     } else {
       computationError = {

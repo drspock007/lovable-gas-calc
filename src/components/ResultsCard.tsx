@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, Download, Share2, CheckCircle, AlertTriangle, Info, FileText, FileDown } from 'lucide-react';
+import { Copy, Download, Share2, CheckCircle, AlertTriangle, Info, FileText, FileDown, RotateCcw } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useI18n } from '@/i18n/context';
-import { ComputeOutputs, ComputeInputs } from '@/lib/physics';
+import { ComputeOutputs, ComputeInputs, BracketError, IntegralError } from '@/lib/physics';
 import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
 
@@ -14,6 +15,7 @@ interface ResultsCardProps {
   solveFor: 'DfromT' | 'TfromD';
   inputs?: ComputeInputs;
   error?: string;
+  onRetry?: () => void;
 }
 
 export const ResultsCard: React.FC<ResultsCardProps> = ({
@@ -21,6 +23,7 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
   solveFor,
   inputs,
   error,
+  onRetry,
 }) => {
   const { t, language } = useI18n();
   const { toast } = useToast();
@@ -135,6 +138,56 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
     return lines.join('\n');
   };
 
+  // Handle computation errors with specific messaging
+  if (results?.error) {
+    const { error: compError } = results;
+    let errorMessage = compError.message;
+    let showRetryButton = false;
+    
+    if (compError.type === 'bracketing') {
+      errorMessage = "Solver could not bracket the solution. Try increasing target time, widening A bounds, or set ε=1% (default).";
+      showRetryButton = true;
+    } else if (compError.type === 'integral') {
+      errorMessage = "Integral near target pressure is too stiff. Increase ε (e.g., 1–2%) or choose adiabatic=false (isothermal).";
+    }
+    
+    return (
+      <Card className="engineering-card border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive flex items-center">
+            <AlertTriangle className="w-5 h-5 mr-2" />
+            Error
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-destructive">{errorMessage}</p>
+          
+          {compError.suggestions && compError.suggestions.length > 0 && (
+            <div className="p-3 bg-warning/10 rounded border border-warning/20">
+              <h4 className="font-semibold text-warning mb-2">Suggestions:</h4>
+              <ul className="text-sm text-warning space-y-1">
+                {compError.suggestions.map((suggestion, index) => (
+                  <li key={index}>• {suggestion}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {showRetryButton && onRetry && (
+            <Button
+              variant="outline"
+              onClick={onRetry}
+              className="flex items-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Auto‑expand search & retry
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (error) {
     return (
       <Card className="engineering-card border-destructive">
@@ -232,7 +285,24 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
               key !== 'rationale' && (
                 <div key={key} className="p-3 bg-secondary/50 rounded">
                   <div className="text-sm font-medium text-muted-foreground mb-1">
-                    {key}
+                    {key === 'Mach' && results.diagnostics.choked ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help border-b border-dashed">
+                              {key}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              At sonic choking the local Mach at the throat is 1 by definition.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      key
+                    )}
                   </div>
                   <span className="text-muted-foreground">
                     {typeof value === 'number' ? formatNumber(value, 3) : String(value)}

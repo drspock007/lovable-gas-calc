@@ -19,7 +19,10 @@ import {
   computeTfromD, 
   ComputeOutputs, 
   GASES, 
-  ComputeInputs 
+  ComputeInputs,
+  BracketError,
+  IntegralError,
+  solveOrificeDfromTWithRetry
 } from '@/lib/physics';
 import { 
   pressureToSI, 
@@ -51,6 +54,8 @@ export const Calculator: React.FC = () => {
   const [results, setResults] = useState<ComputeOutputs | null>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [lastComputeInputs, setLastComputeInputs] = useState<ComputeInputs | null>(null);
 
   // Load shared calculation from URL on mount
   useEffect(() => {
@@ -75,7 +80,7 @@ export const Calculator: React.FC = () => {
     localStorage.setItem('gasTransfer-inputValues', JSON.stringify(inputValues));
   }, [inputValues]);
 
-  const handleCalculate = async () => {
+  const handleCalculate = async (expandFactor: number = 1) => {
     setLoading(true);
     setError('');
 
@@ -119,6 +124,9 @@ export const Calculator: React.FC = () => {
         calculationInputs.D = lengthToSI(inputValues.D, inputValues.D_unit as any || 'mm');
       }
 
+      // Store inputs for retry functionality
+      setLastComputeInputs(calculationInputs);
+
       // Validate inputs
       if (P1_SI <= 0 || P2_SI <= 0) {
         throw new Error('Pressures must be positive (absolute pressures)');
@@ -140,10 +148,31 @@ export const Calculator: React.FC = () => {
         throw new Error('Volume and length must be positive');
       }
 
-      // Perform calculation
-      const calculationResults = solveFor === 'DfromT' 
-        ? computeDfromT(calculationInputs)
-        : computeTfromD(calculationInputs);
+      // Perform calculation with retry support for DfromT
+      let calculationResults: ComputeOutputs;
+      
+      if (solveFor === 'DfromT' && expandFactor > 1) {
+        // Use retry solver with expanded bounds
+        try {
+          const D = solveOrificeDfromTWithRetry(calculationInputs, expandFactor);
+          calculationResults = computeDfromT({...calculationInputs, D });
+          calculationResults.D = D;
+        } catch (retryError) {
+          calculationResults = computeDfromT(calculationInputs);
+        }
+      } else {
+        calculationResults = solveFor === 'DfromT' 
+          ? computeDfromT(calculationInputs)
+          : computeTfromD(calculationInputs);
+      }
+        
+      setResults(calculationResults);
+      
+      toast({
+        title: "Calculation Complete",
+        description: `${solveFor === 'DfromT' ? 'Diameter' : 'Time'} calculated successfully`,
+        duration: 3000,
+      });
         
       setResults(calculationResults);
       
@@ -166,6 +195,13 @@ export const Calculator: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRetry = () => {
+    const newRetryCount = retryCount + 1;
+    setRetryCount(newRetryCount);
+    const expandFactor = Math.pow(2, newRetryCount); // 2, 4, 8, 16...
+    handleCalculate(expandFactor);
   };
 
   const getSelectedGas = () => {
@@ -357,8 +393,9 @@ export const Calculator: React.FC = () => {
               <ResultsCard 
                 results={results} 
                 solveFor={solveFor}
-                inputs={computeInputs}
+                inputs={lastComputeInputs}
                 error={error}
+                onRetry={handleRetry}
               />
             </div>
 
