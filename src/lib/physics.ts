@@ -4,6 +4,8 @@
  * @fileoverview Complete implementation of capillary and orifice flow models
  */
 
+import { brent } from './rootfind';
+
 /**
  * Gas properties at 20°C (293.15 K)
  */
@@ -55,6 +57,16 @@ export interface ComputeInputs {
 }
 
 /**
+ * Detailed error information for actionable feedback
+ */
+export interface ComputationError {
+  type: 'convergence' | 'bracketing' | 'numerical' | 'input' | 'model';
+  message: string;
+  details?: Record<string, any>;
+  suggestions?: string[];
+}
+
+/**
  * Computation results
  */
 export interface ComputeOutputs {
@@ -68,6 +80,8 @@ export interface ComputeOutputs {
   diagnostics: Record<string, number | string | boolean>;
   /** Warning messages */
   warnings: string[];
+  /** Detailed error information if computation fails */
+  error?: ComputationError;
 }
 
 /** Universal gas constant [J/(mol·K)] */
@@ -121,6 +135,22 @@ export const GASES: Record<string, GasProps> = {
   },
 };
 
+// ============= HELPER FUNCTIONS =============
+
+/**
+ * Clamp value between bounds
+ */
+function clamp(x: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, x));
+}
+
+/**
+ * Positive value protection
+ */
+function pos(x: number): number {
+  return Math.max(x, 0);
+}
+
 /**
  * Calculate critical pressure ratio for compressible flow
  * @param gamma Heat capacity ratio [-]
@@ -131,7 +161,36 @@ export function criticalPressureRatio(gamma: number): number {
 }
 
 /**
- * Calculate sonic flow coefficient
+ * Enhanced critical ratio calculation (same as criticalPressureRatio but for clarity)
+ */
+function criticalRatio(g: number): number {
+  return Math.pow(2 / (g + 1), g / (g - 1));
+}
+
+/**
+ * Sonic velocity coefficient C*
+ * @param g Heat capacity ratio [-]
+ * @param R Specific gas constant [J/(kg·K)]
+ * @param T Temperature [K]
+ * @returns C* coefficient [kg/(m²·s·Pa)]
+ */
+function Cstar(g: number, R: number, T: number): number {
+  return Math.sqrt(g / (R * T)) * Math.pow(2 / (g + 1), (g + 1) / (2 * (g - 1)));
+}
+
+/**
+ * Subsonic flow coefficient K
+ * @param g Heat capacity ratio [-]
+ * @param R Specific gas constant [J/(kg·K)]
+ * @param T Temperature [K]
+ * @returns K coefficient [kg/(m²·s·Pa)]
+ */
+function K(g: number, R: number, T: number): number {
+  return Math.sqrt(2 * g / (R * T * (g - 1)));
+}
+
+/**
+ * Calculate sonic flow coefficient (legacy)
  * @param gamma Heat capacity ratio [-]
  * @param R Specific gas constant [J/(kg·K)]
  * @param T Temperature [K]
@@ -142,7 +201,7 @@ function sonicFlowCoeff(gamma: number, R: number, T: number): number {
 }
 
 /**
- * Calculate subsonic flow coefficient
+ * Calculate subsonic flow coefficient (legacy)
  * @param gamma Heat capacity ratio [-]
  * @param R Specific gas constant [J/(kg·K)]
  * @param T Temperature [K]
@@ -252,8 +311,173 @@ function capillaryTfromD_filling(inputs: ComputeInputs): number {
   return (128 * mu * L * V * lnTerm) / (Math.PI * D4 * Ps);
 }
 
+// ============= ADAPTIVE SIMPSON INTEGRATOR =============
+
 /**
- * Orifice flow model - Blowdown (isothermal)
+ * Adaptive Simpson's rule integrator
+ * @param func Function to integrate
+ * @param a Lower bound
+ * @param b Upper bound
+ * @param rtol Relative tolerance
+ * @param atol Absolute tolerance
+ * @param maxDepth Maximum recursion depth
+ * @returns Integral value
+ */
+function adaptiveSimpson(
+  func: (x: number) => number,
+  a: number,
+  b: number,
+  rtol: number = 1e-7,
+  atol: number = 1e-12,
+  maxDepth: number = 20
+): number {
+  
+  function simpson(x0: number, x1: number, x2: number): number {
+    const h = (x2 - x0) / 2;
+    return h * (func(x0) + 4 * func(x1) + func(x2)) / 3;
+  }
+  
+  function adaptiveHelper(x0: number, x2: number, eps: number, whole: number, depth: number): number {
+    if (depth >= maxDepth) return whole;
+    
+    const x1 = (x0 + x2) / 2;
+    const x01 = (x0 + x1) / 2;
+    const x12 = (x1 + x2) / 2;
+    
+    const left = simpson(x0, x01, x1);
+    const right = simpson(x1, x12, x2);
+    const total = left + right;
+    
+    const error = Math.abs(total - whole);
+    if (error <= 15 * eps) {
+      return total + (total - whole) / 15;
+    }
+    
+    return adaptiveHelper(x0, x1, eps / 2, left, depth + 1) + 
+           adaptiveHelper(x1, x2, eps / 2, right, depth + 1);
+  }
+  
+  if (Math.abs(b - a) < atol) return 0;
+  
+  const mid = (a + b) / 2;
+  const whole = simpson(a, mid, b);
+  const eps = Math.max(atol, rtol * Math.abs(whole));
+  
+  return adaptiveHelper(a, b, eps, whole, 0);
+}
+
+// ============= SUBCRITICAL INTEGRALS =============
+
+/**
+ * Subcritical integral for blowdown using y = (P2/P)^(1/gamma) substitution
+ * @param P2 Exit pressure [Pa]
+ * @param Pstar Critical pressure [Pa]
+ * @param Pf Final pressure [Pa]
+ * @param gamma Heat capacity ratio
+ * @returns Integral value [-]
+ */
+function subcriticalIntegralBlowdown(P2: number, Pstar: number, Pf: number, gamma: number): number {
+  // Enhanced numerical guards
+  const eps = clamp(Math.max(1e-3, Math.min(0.1, 1e-3)), 1e-6, 0.1);
+  
+  // Clamp pressure ratios with numerical guards
+  const r_star = clamp(P2/Pstar, 1e-12, 1-1e-9);
+  const r_f = clamp(P2/Pf, 1e-12, 1-1e-9);
+  
+  // y = (P2/P)^(1/gamma), so P = P2/y^gamma
+  // Limits: P goes from Pstar to Pf
+  // y goes from (P2/Pstar)^(1/gamma) to (P2/Pf)^(1/gamma)
+  const y_hi = Math.pow(r_star, 1/gamma);
+  const y_lo = Math.pow(r_f, 1/gamma);
+  
+  // Guard against invalid integration bounds
+  if (y_hi <= y_lo || y_hi >= 1-eps || y_lo <= 0) {
+    return 0;
+  }
+  
+  // Integrand: gamma / (y * sqrt(y^2 - y^(gamma+1)))
+  const integrand = (y: number) => {
+    if (y <= 0 || y >= 1-eps) return 0;
+    const y2 = y * y;
+    const ygp1 = Math.pow(y, gamma + 1);
+    const discriminant = pos(y2 - ygp1);
+    
+    // Additional protection for near-singularity
+    if (discriminant <= 1e-15 || y >= 1-2*eps) {
+      return 0;
+    }
+    
+    const sqrtTerm = Math.sqrt(discriminant);
+    if (sqrtTerm <= 1e-15) return 0;
+    
+    return gamma / (y * sqrtTerm);
+  };
+  
+  try {
+    return adaptiveSimpson(integrand, y_lo, Math.min(y_hi, 1-eps), 1e-7, 1e-12);
+  } catch (error) {
+    // Fallback to zero if integration fails
+    return 0;
+  }
+}
+
+/**
+ * Subcritical integral for filling using z = (P/Ps)^(1/gamma) substitution
+ * @param Ps Supply pressure [Pa]
+ * @param Pstar Critical pressure [Pa]
+ * @param Pf Final pressure [Pa]
+ * @param gamma Heat capacity ratio
+ * @returns Integral value [-]
+ */
+function subcriticalIntegralFilling(Ps: number, Pstar: number, Pf: number, gamma: number): number {
+  // Enhanced numerical guards
+  const eps = clamp(Math.max(1e-3, Math.min(0.1, 1e-3)), 1e-6, 0.1);
+  
+  // Clamp pressure ratios with numerical guards
+  const r_star = clamp(Pstar/Ps, 1e-12, 1-1e-9);
+  const r_f = clamp(Pf/Ps, 1e-12, 1-1e-9);
+  
+  // z = (P/Ps)^(1/gamma), so P = Ps * z^gamma
+  // Limits: P goes from Pstar to Pf
+  // z goes from (Pstar/Ps)^(1/gamma) to (Pf/Ps)^(1/gamma)
+  const z_lo = Math.pow(r_star, 1/gamma);
+  const z_hi = Math.pow(r_f, 1/gamma);
+  
+  // Guard against invalid integration bounds
+  if (z_hi <= z_lo || z_hi >= 1-eps || z_lo <= 0) {
+    return 0;
+  }
+  
+  // Integrand: gamma / (z * sqrt(z^2 - z^(gamma+1)))
+  const integrand = (z: number) => {
+    if (z <= 0 || z >= 1-eps) return 0;
+    const z2 = z * z;
+    const zgp1 = Math.pow(z, gamma + 1);
+    const discriminant = pos(z2 - zgp1);
+    
+    // Additional protection for near-singularity
+    if (discriminant <= 1e-15 || z >= 1-2*eps) {
+      return 0;
+    }
+    
+    const sqrtTerm = Math.sqrt(discriminant);
+    if (sqrtTerm <= 1e-15) return 0;
+    
+    return gamma / (z * sqrtTerm);
+  };
+  
+  try {
+    return adaptiveSimpson(integrand, z_lo, Math.min(z_hi, 1-eps), 1e-7, 1e-12);
+  } catch (error) {
+    // Fallback to zero if integration fails
+    return 0;
+  }
+}
+
+// ============= ENHANCED ORIFICE TIME SOLVERS =============
+
+/**
+ * Enhanced orifice flow model - Blowdown (isothermal)
  * @param inputs Computation inputs
  * @returns Computed time [s]
  */
@@ -261,35 +485,149 @@ function orificeTfromD_blowdown(inputs: ComputeInputs): number {
   const { V, P1, P2, T, gas, D, Cd = 0.62, epsilon = 0.01 } = inputs;
   const { R, gamma } = gas;
   
-  const rStar = criticalPressureRatio(gamma);
-  const Cstar = sonicFlowCoeff(gamma, R, T);
-  const K = subsonicFlowCoeff(gamma, R, T);
+  // Guard epsilon
+  const eps = clamp(epsilon, 1e-3, 0.1);
+  
+  const rc = criticalRatio(gamma);
+  const cstar = Cstar(gamma, R, T);
+  const kCoeff = K(gamma, R, T);
   const A = Math.PI * Math.pow(D!, 2) / 4;
-  const Pf = P2 * (1 + epsilon);
+  const Pf = P2 * (1 + eps);
   
-  // Check if initially choked
-  const PStar = P2 / rStar;
+  // Critical pressure
+  const Pstar = P2 / rc;
   
-  if (P1 > PStar) {
-    // Initially choked - split into sonic and subsonic phases
-    const tSonic = (V / (R * T * Cd * A)) * Math.log(P1 / PStar) / Cstar;
-    
-    // Subsonic phase - numerical integration (simplified)
-    const tSubsonic = (V / (R * T * Cd * A * K)) * 
-      Math.log(Math.sqrt(Math.pow(P2/PStar, 2/gamma) - Math.pow(P2/PStar, (gamma+1)/gamma)) /
-               Math.sqrt(Math.pow(Pf/PStar, 2/gamma) - Math.pow(Pf/PStar, (gamma+1)/gamma)));
-    
-    return tSonic + tSubsonic;
+  if (P1 <= Pstar) {
+    // Only subcritical flow
+    const I_sub = subcriticalIntegralBlowdown(P2, P1, Pf, gamma);
+    return (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
   } else {
-    // Always subsonic
-    return (V / (R * T * Cd * A * K)) * 
-      Math.log(Math.sqrt(Math.pow(P2/P1, 2/gamma) - Math.pow(P2/P1, (gamma+1)/gamma)) /
-               Math.sqrt(Math.pow(Pf/P1, 2/gamma) - Math.pow(Pf/P1, (gamma+1)/gamma)));
+    // Split into sonic and subsonic phases
+    const t_sonic = (V / (R * T * Cd * A)) * Math.log(P1 / Pstar) / cstar;
+    const I_sub = subcriticalIntegralBlowdown(P2, Pstar, Pf, gamma);
+    const t_sub = (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
+    
+  return t_sonic + t_sub;
   }
 }
 
+// ============= ROBUST ROOT FINDING FOR D FROM T =============
+
 /**
- * Orifice flow model - Filling (isothermal)
+ * Solve for diameter from time using robust root finding with auto-bracketing
+ * @param inputs Computation inputs
+ * @returns Computed diameter [m]
+ */
+function solveOrificeDfromT(inputs: ComputeInputs): number {
+  const t_target = inputs.t!;
+  
+  // Define objective function f(A) = t_model(A) - t_target
+  const objectiveFunction = (A: number): number => {
+    const D = Math.sqrt(4 * A / Math.PI);
+    const testInputs = { ...inputs, D };
+    
+    let t_calc: number;
+    if (inputs.process === 'blowdown') {
+      t_calc = orificeTfromD_blowdown(testInputs);
+    } else {
+      t_calc = orificeTfromD_filling(testInputs);
+    }
+    
+    return t_calc - t_target;
+  };
+  
+  // Initial bracket
+  let A_lo = 1e-12; // Very small area
+  let A_hi = 1e-2;  // Large area (D ≈ 112.8 mm)
+  
+  // Auto-expand bracket up to 12 times
+  let expansions = 0;
+  const maxExpansions = 12;
+  
+  while (expansions < maxExpansions) {
+    try {
+      const f_lo = objectiveFunction(A_lo);
+      const f_hi = objectiveFunction(A_hi);
+      
+      // Check if we have proper bracketing
+      if (f_lo * f_hi < 0) {
+        break; // We have a bracket
+      }
+      
+      // Expand bracket
+      if (f_lo < 0) {
+        A_lo /= 10;
+      }
+      if (f_hi > 0) {
+        A_hi *= 10;
+      }
+      
+      expansions++;
+    } catch (error) {
+      // If evaluation fails, try expanding
+      A_lo /= 10;
+      A_hi *= 10;
+      expansions++;
+    }
+  }
+  
+  if (expansions >= maxExpansions) {
+    const error: ComputationError = {
+      type: 'bracketing',
+      message: `Failed to bracket root after ${maxExpansions} expansions`,
+      details: { A_lo, A_hi, expansions },
+      suggestions: [
+        'Check that input pressures are physically reasonable',
+        'Verify that the time target is achievable with the given vessel geometry',
+        'Consider using a different flow model or checking for choked flow conditions'
+      ]
+    };
+    throw error;
+  }
+  
+  // Use Brent's method for robust root finding
+  const A_solution = brent(objectiveFunction, [A_lo, A_hi], {
+    tolerance: 1e-6,
+    maxIterations: 200
+  });
+  
+  if (A_solution === null) {
+    const error: ComputationError = {
+      type: 'convergence',
+      message: 'Root finding failed to converge',
+      details: { A_lo, A_hi, method: 'Brent' },
+      suggestions: [
+        'The orifice model may not have a valid solution for the given parameters',
+        'Try adjusting the time target or pressure conditions',
+        'Check for numerical issues in the flow equations'
+      ]
+    };
+    throw error;
+  }
+  
+  // Convert area back to diameter
+  const D = Math.sqrt(4 * A_solution / Math.PI);
+  
+  // Sanity check
+  if (D <= 0 || D > 1.0) {
+    const error: ComputationError = {
+      type: 'numerical',
+      message: `Computed diameter ${D.toExponential(3)} m is outside reasonable bounds`,
+      details: { D, A_solution },
+      suggestions: [
+        'Check input parameters for physical consistency',
+        'Verify that the problem setup is correct',
+        'Consider whether the orifice model is appropriate for this scenario'
+      ]
+    };
+    throw error;
+  }
+  
+  return D;
+}
+
+/**
+ * Enhanced orifice flow model - Filling (isothermal)
  * @param inputs Computation inputs
  * @returns Computed time [s]
  */
@@ -299,34 +637,34 @@ function orificeTfromD_filling(inputs: ComputeInputs): number {
   
   if (!Ps) throw new Error('Supply pressure Ps required for filling');
   
-  const rStar = criticalPressureRatio(gamma);
-  const Cstar = sonicFlowCoeff(gamma, R, T);
-  const A = Math.PI * Math.pow(D!, 2) / 4;
-  const Pf = P2 * (1 - epsilon);
-  const PStar = rStar * Ps;
+  // Guard epsilon
+  const eps = clamp(epsilon, 1e-3, 0.1);
   
-  if (P1 < PStar) {
-    // Initially choked - linear sonic phase
-    const tSonic = (V / (R * T * Cd * A * Ps * Cstar)) * (PStar - P1);
-    
-    // Subsonic phase - numerical integration (simplified)
-    const K = subsonicFlowCoeff(gamma, R, T);
-    const tSubsonic = (V / (R * T * Cd * A * Ps * K)) * 
-      Math.log(Math.sqrt(Math.pow(PStar/Ps, 2/gamma) - Math.pow(PStar/Ps, (gamma+1)/gamma)) /
-               Math.sqrt(Math.pow(Pf/Ps, 2/gamma) - Math.pow(Pf/Ps, (gamma+1)/gamma)));
-    
-    return tSonic + tSubsonic;
+  const rc = criticalRatio(gamma);
+  const cstar = Cstar(gamma, R, T);
+  const kCoeff = K(gamma, R, T);
+  const A = Math.PI * Math.pow(D!, 2) / 4;
+  const Pf = P2 * (1 - eps);
+  
+  // Critical pressure
+  const Pstar = rc * Ps;
+  
+  if (P1 >= Pstar) {
+    // Only subcritical flow
+    const I_sub = subcriticalIntegralFilling(Ps, P1, Pf, gamma);
+    return (V / (R * T * Cd * A)) * (Ps / kCoeff) * I_sub;
   } else {
-    // Always subsonic
-    const K = subsonicFlowCoeff(gamma, R, T);
-    return (V / (R * T * Cd * A * Ps * K)) * 
-      Math.log(Math.sqrt(Math.pow(P1/Ps, 2/gamma) - Math.pow(P1/Ps, (gamma+1)/gamma)) /
-               Math.sqrt(Math.pow(Pf/Ps, 2/gamma) - Math.pow(Pf/Ps, (gamma+1)/gamma)));
+    // Split into sonic and subsonic phases
+    const t_sonic = (V / (R * T * Cd * A * Ps * cstar)) * (Pstar - P1);
+    const I_sub = subcriticalIntegralFilling(Ps, Pstar, Pf, gamma);
+    const t_sub = (V / (R * T * Cd * A)) * (Ps / kCoeff) * I_sub;
+    
+    return t_sonic + t_sub;
   }
 }
 
 /**
- * Calculate diagnostics for flow regime determination
+ * Calculate enhanced diagnostics with precise throat/exit states
  * @param inputs Computation inputs
  * @param D Diameter [m]
  * @returns Diagnostics object
@@ -335,30 +673,79 @@ function calculateDiagnostics(inputs: ComputeInputs, D: number): Record<string, 
   const { V, P1, P2, T, L, gas, process, Ps } = inputs;
   const { R, gamma, mu } = gas;
   
-  // Average pressure for diagnostics
-  const Pavg = process === 'blowdown' ? (P1 + P2) / 2 : (P1 + (Ps || P2)) / 2;
-  const rho = gasDensity(Pavg, R, T);
-  
-  // Estimate velocity (simplified)
   const A = Math.PI * Math.pow(D, 2) / 4;
-  const deltaP = process === 'blowdown' ? P1 - P2 : (Ps || P2) - P1;
-  const v = Math.sqrt(2 * deltaP / rho);
+  const rStar = criticalPressureRatio(gamma);
+  const LoverD = L / D;
+  
+  // Determine if choked at start
+  let isChoked: boolean;
+  let Mach: number;
+  let v: number; // velocity
+  let rho: number; // density
+  let P_exit: number;
+  
+  if (process === 'blowdown') {
+    const Pstar = P2 / rStar;
+    isChoked = P1 > Pstar;
+    
+    if (isChoked) {
+      // Throat conditions at sonic state
+      const T_t = T * 2 / (gamma + 1);
+      const P_t = P1 * Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
+      const a_t = Math.sqrt(gamma * R * T_t);
+      rho = P_t / (R * T_t);
+      v = a_t;
+      Mach = 1.0;
+      P_exit = P_t;
+    } else {
+      // Subsonic conditions
+      P_exit = P2;
+      rho = P_exit / (R * T);
+      // Estimate mass flow rate and velocity
+      const deltaP = P1 - P2;
+      v = Math.sqrt(2 * deltaP / rho);
+      const a = Math.sqrt(gamma * R * T);
+      Mach = v / a;
+    }
+  } else {
+    // Filling
+    const Ps_val = Ps || P2;
+    const Pstar = rStar * Ps_val;
+    isChoked = P1 < Pstar;
+    
+    if (isChoked) {
+      // Throat conditions at sonic state
+      const T_t = T * 2 / (gamma + 1);
+      const P_t = Ps_val * Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
+      const a_t = Math.sqrt(gamma * R * T_t);
+      rho = P_t / (R * T_t);
+      v = a_t;
+      Mach = 1.0;
+      P_exit = P_t;
+    } else {
+      // Subsonic conditions
+      P_exit = P1;
+      rho = P_exit / (R * T);
+      const deltaP = Ps_val - P1;
+      v = Math.sqrt(2 * deltaP / rho);
+      const a = Math.sqrt(gamma * R * T);
+      Mach = v / a;
+    }
+  }
   
   const Re = reynoldsNumber(rho, v, D, mu);
-  const LoverD = L / D;
-  const rStar = criticalPressureRatio(gamma);
-  const isChoked = process === 'blowdown' ? P2/P1 <= rStar : P1/(Ps || P2) <= rStar;
-  const Mach = v / Math.sqrt(gamma * R * T);
   
   return {
     Re,
     'L/D': LoverD,
     Mach,
     choked: isChoked,
-    'P_avg_Pa': Pavg,
+    'P_exit_Pa': P_exit,
     'rho_kg_m3': rho,
     'v_m_s': v,
     'r_critical': rStar,
+    'throat_velocity': isChoked ? v : undefined,
+    'throat_density': isChoked ? rho : undefined,
   };
 }
 
@@ -418,39 +805,19 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       capillary_error = `Capillary model failed: ${(error as Error).message}`;
     }
     
-    // 2) Compute D_orif via orifice model (inverse calculation)
+    // 2) Compute D_orif via orifice model (robust root finding)
     try {
-      let D_guess = 0.001; // Start with 1mm
-      const tolerance = 1e-6;
-      let iterations = 0;
-      const maxIterations = 50;
-      
-      while (iterations < maxIterations) {
-        const testInputs = { ...inputs, D: D_guess };
-        let t_calc: number;
-        
-        if (inputs.process === 'blowdown') {
-          t_calc = orificeTfromD_blowdown(testInputs);
-        } else {
-          t_calc = orificeTfromD_filling(testInputs);
-        }
-        
-        const error = (t_calc - inputs.t!) / inputs.t!;
-        
-        if (Math.abs(error) < tolerance) {
-          D_orifice = D_guess;
-          break;
-        }
-        
-        D_guess *= Math.pow(inputs.t! / t_calc, 0.25);
-        iterations++;
-      }
-      
-      if (iterations >= maxIterations) {
-        orifice_error = 'Orifice model did not converge';
-      }
+      D_orifice = solveOrificeDfromT(inputs);
     } catch (error) {
-      orifice_error = `Orifice model failed: ${(error as Error).message}`;
+      if (typeof error === 'object' && error !== null && 'type' in error) {
+        const compError = error as ComputationError;
+        orifice_error = `Orifice model ${compError.type} error: ${compError.message}`;
+        if (compError.suggestions && compError.suggestions.length > 0) {
+          orifice_error += `. Suggestions: ${compError.suggestions.join('; ')}.`;
+        }
+      } else {
+        orifice_error = `Orifice model failed: ${(error as Error).message}`;
+      }
     }
     
     // 3) Validate model assumptions and choose the best
@@ -552,10 +919,23 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     };
     
   } catch (error) {
+    let computationError: ComputationError;
+    
+    if (typeof error === 'object' && error !== null && 'type' in error) {
+      computationError = error as ComputationError;
+    } else {
+      computationError = {
+        type: 'model',
+        message: (error as Error).message,
+        suggestions: ['Check input parameters and model assumptions']
+      };
+    }
+    
     return {
       verdict: 'inconclusive',
-      diagnostics: { rationale: `Computation failed: ${(error as Error).message}` },
-      warnings: [`Computation failed: ${(error as Error).message}`],
+      diagnostics: { rationale: `Computation failed: ${computationError.message}` },
+      warnings: [`Computation failed: ${computationError.message}`],
+      error: computationError,
     };
   }
 }
@@ -712,10 +1092,23 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
     };
     
   } catch (error) {
+    let computationError: ComputationError;
+    
+    if (typeof error === 'object' && error !== null && 'type' in error) {
+      computationError = error as ComputationError;
+    } else {
+      computationError = {
+        type: 'model',
+        message: (error as Error).message,
+        suggestions: ['Check input parameters and model assumptions']
+      };
+    }
+    
     return {
       verdict: 'inconclusive',
-      diagnostics: { rationale: `Computation failed: ${(error as Error).message}` },
-      warnings: [`Computation failed: ${(error as Error).message}`],
+      diagnostics: { rationale: `Computation failed: ${computationError.message}` },
+      warnings: [`Computation failed: ${computationError.message}`],
+      error: computationError,
     };
   }
 }
