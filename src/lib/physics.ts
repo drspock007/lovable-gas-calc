@@ -1379,7 +1379,7 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
       if (inputs.process === 'filling') {
         t_capillary = capillaryTfromD_filling(inputs);
       } else {
-        capillary_error = 'Capillary blowdown time calculation not implemented';
+        t_capillary = capillaryTfromD_blowdown(inputs);
       }
     } catch (error) {
       capillary_error = `Capillary model failed: ${(error as Error).message}`;
@@ -1598,4 +1598,160 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
       error: computationError,
     };
   }
+}
+
+// ============= TIME FROM AREA HELPERS =============
+
+/**
+ * Capillary flow model - Time from diameter (blowdown)
+ * @param inputs Computation inputs
+ * @returns Computed time [s]
+ */
+function capillaryTfromD_blowdown(inputs: ComputeInputs): number {
+  const { V, P1, P2, T, L, gas, D, epsilon = 0.01 } = inputs;
+  const { mu } = gas;
+  
+  const Pf = P2 * (1 + epsilon);
+  
+  // Closed-form solution for capillary blowdown (derived from DfromT)
+  const numerator = (P1 - P2) * (Pf + P2);
+  const denominator = (P1 + P2) * (Pf - P2);
+  
+  if (numerator <= 0 || denominator <= 0) {
+    throw new Error('Invalid pressure conditions for capillary blowdown');
+  }
+  
+  const lnTerm = Math.log(numerator / denominator);
+  const A = Math.PI * Math.pow(D!, 2) / 4;
+  
+  // t = (128 * mu * L * V * lnTerm) / (Pi * D^4 * P2)
+  // t = (128 * mu * L * V * lnTerm) / (Pi * (4*A/Pi)^2 * P2)
+  // t = (128 * mu * L * V * lnTerm) / (16 * A^2 / Pi * P2)
+  // t = (128 * Pi * mu * L * V * lnTerm) / (16 * A^2 * P2)
+  // t = (8 * Pi * mu * L * V * lnTerm) / (A^2 * P2)
+  
+  return (8 * Math.PI * mu * L * V * lnTerm) / (A * A * P2);
+}
+
+/**
+ * Returns time [s] for current inputs and area A [m²] using orifice model
+ * @param inputs Computation inputs (NOT mutated)
+ * @param A_SI_m2 Cross-sectional area [m²]
+ * @returns Time [s]
+ */
+export function timeOrificeFromAreaSI(inputs: ComputeInputs, A_SI_m2: number): number {
+  // Create a copy of inputs with computed diameter from area
+  const D = Math.sqrt(4 * A_SI_m2 / Math.PI);
+  const inputsCopy: ComputeInputs = { ...inputs, D };
+  
+  if (inputs.process === 'blowdown') {
+    return orificeTfromD_blowdown(inputsCopy);
+  } else {
+    return orificeTfromD_filling(inputsCopy);
+  }
+}
+
+/**
+ * Returns time [s] for current inputs and area A [m²] using capillary model
+ * @param inputs Computation inputs (NOT mutated)
+ * @param A_SI_m2 Cross-sectional area [m²]
+ * @returns Time [s]
+ */
+export function timeCapillaryFromAreaSI(inputs: ComputeInputs, A_SI_m2: number): number {
+  // Create a copy of inputs with computed diameter from area
+  const D = Math.sqrt(4 * A_SI_m2 / Math.PI);
+  const inputsCopy: ComputeInputs = { ...inputs, D };
+  
+  if (inputs.process === 'blowdown') {
+    return capillaryTfromD_blowdown(inputsCopy);
+  } else {
+    return capillaryTfromD_filling(inputsCopy);
+  }
+}
+
+// ============= TIME-AREA SAMPLER =============
+
+export type TASample = { 
+  A_m2: number; 
+  D_m: number; 
+  t_s: number; 
+  choked: boolean; 
+  phase: 'sonic'|'sub'|'mixed' 
+};
+
+export type TASampler = { 
+  model: 'orifice'|'capillary'; 
+  samples: TASample[]; 
+  bracket?: { 
+    A_lo: number; 
+    A_hi: number; 
+    t_lo: number; 
+    t_hi: number; 
+    expansions: number 
+  } 
+};
+
+/**
+ * Sample time vs area relationship for a given model
+ * @param inputs Computation inputs (NOT mutated)
+ * @param model Flow model to use
+ * @param n Number of samples (default 5)
+ * @param A_lo Lower area bound [m²] (default 1e-12)
+ * @param A_hi Upper area bound [m²] (default 1e-8)
+ * @returns TASampler with log-spaced samples
+ */
+export function sample_tA(
+  inputs: ComputeInputs, 
+  model: 'orifice'|'capillary', 
+  n = 5, 
+  A_lo = 1e-12, 
+  A_hi = 1e-8
+): TASampler {
+  // Log-spaced grid on [A_lo, A_hi]
+  const g = (i: number) => Math.exp(Math.log(A_lo) + (Math.log(A_hi) - Math.log(A_lo)) * (i / (n - 1)));
+  const out: TASample[] = [];
+  
+  for (let i = 0; i < n; i++) {
+    const A = g(i);
+    const D = Math.sqrt(4 * A / Math.PI);
+    let t = NaN, choked = false, phase: 'sonic'|'sub'|'mixed' = 'sub';
+    
+    try {
+      if (model === 'orifice') {
+        t = timeOrificeFromAreaSI(inputs, A);
+        
+        // Get choked/phase info from diagnostics
+        const inputsCopy = { ...inputs, D };
+        const diagnostics = calculateDiagnostics(inputsCopy, D);
+        choked = diagnostics.choked as boolean || false;
+        
+        // Determine phase based on flow conditions
+        if (choked) {
+          const { P1, P2, gas } = inputs;
+          const rc = criticalRatio(gas.gamma);
+          const Pstar = inputs.process === 'blowdown' ? P2 / rc : rc * (inputs.Ps || P1);
+          
+          if (inputs.process === 'blowdown') {
+            phase = P1 > Pstar ? 'mixed' : 'sonic';
+          } else {
+            phase = P1 < Pstar ? 'mixed' : 'sonic';
+          }
+        } else {
+          phase = 'sub';
+        }
+      } else {
+        t = timeCapillaryFromAreaSI(inputs, A);
+        // Capillary flow is typically subsonic/laminar
+        choked = false;
+        phase = 'sub';
+      }
+    } catch (error) {
+      // Keep NaN for failed computations
+      t = NaN;
+    }
+    
+    out.push({ A_m2: A, D_m: D, t_s: t, choked, phase });
+  }
+  
+  return { model, samples: out };
 }
