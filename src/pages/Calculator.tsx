@@ -32,6 +32,7 @@ import {
   timeToSI 
 } from '@/lib/units';
 import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
+import { DebugPanel } from '@/components/DebugPanel';
 
 export const Calculator: React.FC = () => {
   const { t, language, setLanguage } = useI18n();
@@ -56,6 +57,7 @@ export const Calculator: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [lastComputeInputs, setLastComputeInputs] = useState<ComputeInputs | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
 
   // Load shared calculation from URL on mount
   useEffect(() => {
@@ -126,6 +128,35 @@ export const Calculator: React.FC = () => {
 
       // Store inputs for retry functionality
       setLastComputeInputs(calculationInputs);
+
+      // Debug logging - assert volume conversion
+      console.assert(
+        Math.abs(volumeToSI(1, 'mm3') - 1e-9) < 1e-15,
+        'Volume conversion assertion failed: 1 mm³ should equal 1e-9 m³'
+      );
+
+      // Console logging for debug mode
+      if (debugMode) {
+        const siEchoObject = {
+          V_SI_m3: calculationInputs.V,
+          P1_Pa: calculationInputs.P1,
+          P2_Pa: calculationInputs.P2,
+          ...(calculationInputs.Ps && { Ps_Pa: calculationInputs.Ps }),
+          T_K: calculationInputs.T,
+          L_m: calculationInputs.L,
+          mode: `${calculationInputs.process}/${calculationInputs.solveFor}`,
+          gas: {
+            R: calculationInputs.gas.R,
+            gamma: calculationInputs.gas.gamma,
+            mu: calculationInputs.gas.mu
+          },
+          Cd: calculationInputs.Cd || 0.62,
+          epsilon: calculationInputs.epsilon || 0.01,
+          ...(calculationInputs.t && { t_target: calculationInputs.t }),
+          ...(calculationInputs.D && { D_target: calculationInputs.D })
+        };
+        console.info('[SI ECHO]', JSON.stringify(siEchoObject));
+      }
 
       // Validate inputs
       if (P1_SI <= 0 || P2_SI <= 0) {
@@ -406,6 +437,11 @@ export const Calculator: React.FC = () => {
                 setInputValues(prev => ({ ...prev, ...inputs }));
               }} />
               <ExplainCard />
+              <DebugPanel 
+                debugMode={debugMode}
+                onDebugToggle={setDebugMode}
+                siInputs={computeInputs}
+              />
             </div>
           </div>
 
