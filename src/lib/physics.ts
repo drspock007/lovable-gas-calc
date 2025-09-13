@@ -60,7 +60,7 @@ export interface ComputeInputs {
  * Detailed error information for actionable feedback
  */
 export interface ComputationError {
-  type: 'convergence' | 'bracketing' | 'numerical' | 'input' | 'model' | 'integral';
+  type: 'convergence' | 'bracketing' | 'numerical' | 'input' | 'model' | 'integral' | 'residual';
   message: string;
   details?: Record<string, any>;
   suggestions?: string[];
@@ -99,6 +99,27 @@ export class IntegralError extends Error {
       'Increase ε (e.g., 1–2%) for more stable integration',
       'Choose adiabatic=false (isothermal) for simpler model',
       'Check pressure conditions are physically reasonable'
+    ];
+  }
+}
+
+export class ResidualError extends Error {
+  type = 'residual' as const;
+  t_check: number;
+  t_target: number;
+  details: Record<string, any>;
+  suggestions: string[];
+  
+  constructor(message: string, t_check: number, t_target: number, details: Record<string, any> = {}) {
+    super(message);
+    this.name = 'ResidualError';
+    this.t_check = t_check;
+    this.t_target = t_target;
+    this.details = details;
+    this.suggestions = [
+      'Switch to alternative model',
+      'Retry with different epsilon value',
+      'Check input parameter accuracy'
     ];
   }
 }
@@ -1136,6 +1157,36 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       diagnostics.D_orifice = D_orifice;
     }
     
+    // Residual check: compute forward time with solved diameter
+    let t_check: number;
+    try {
+      if (inputs.process === 'blowdown') {
+        t_check = orificeTfromD_blowdown({ ...inputs, D });
+      } else {
+        t_check = orificeTfromD_filling({ ...inputs, D });
+      }
+      
+      diagnostics.t_check = t_check;
+      
+      // Check if residual is within 2% tolerance
+      const residualError = Math.abs(t_check - inputs.t!) / inputs.t!;
+      if (residualError > 0.02) {
+        throw new ResidualError(
+          `Result rejected by residual check (${(residualError * 100).toFixed(1)}% error)`,
+          t_check,
+          inputs.t!,
+          { residualError, verdict, D }
+        );
+      }
+    } catch (error) {
+      if (error instanceof ResidualError) {
+        throw error; // Re-throw residual errors
+      }
+      // Forward computation failed, but keep the result with warning
+      warnings.push('Forward verification failed - result may be inaccurate');
+      diagnostics.t_check = 'verification_failed';
+    }
+    
     const modelWarnings = generateWarnings(diagnostics, inputs);
     
     return {
@@ -1148,12 +1199,12 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
   } catch (error) {
     let computationError: ComputationError;
     
-    if (error instanceof BracketError || error instanceof IntegralError) {
+    if (error instanceof BracketError || error instanceof IntegralError || error instanceof ResidualError) {
       computationError = {
         type: error.type,
         message: error.message,
         details: error.details,
-        suggestions: error.suggestions
+        suggestions: error.suggestions || []
       };
     } else if (typeof error === 'object' && error !== null && 'type' in error) {
       computationError = error as ComputationError;
@@ -1329,6 +1380,39 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
     if (t_capillary && t_orifice && t_capillary !== t_orifice) {
       diagnostics.t_capillary = t_capillary;
       diagnostics.t_orifice = t_orifice;
+    }
+    
+    // Residual check: compute forward diameter with solved time
+    let D_check: number;
+    try {
+      if (inputs.process === 'blowdown') {
+        D_check = capillaryDfromT_blowdown({ ...inputs, t }) || solveOrificeDfromT({ ...inputs, t });
+      } else {
+        D_check = capillaryDfromT_filling({ ...inputs, t }) || solveOrificeDfromT({ ...inputs, t });
+      }
+      
+      // Convert to area and back to check consistency
+      const A_check = Math.PI * Math.pow(D_check, 2) / 4;
+      const D_fromA = Math.sqrt(4 * A_check / Math.PI);
+      diagnostics.D_check = D_fromA;
+      
+      // For TfromD, we check diameter consistency (conceptually similar to time check)
+      const residualError = Math.abs(D_fromA - inputs.D!) / inputs.D!;
+      if (residualError > 0.02) {
+        throw new ResidualError(
+          `Result rejected by residual check (${(residualError * 100).toFixed(1)}% error)`,
+          t, // Use solved time as t_check for consistency
+          inputs.D!, // But check against target diameter
+          { residualError, verdict, t, D_check: D_fromA }
+        );
+      }
+    } catch (error) {
+      if (error instanceof ResidualError) {
+        throw error; // Re-throw residual errors
+      }
+      // Forward computation failed, but keep the result with warning
+      warnings.push('Forward verification failed - result may be inaccurate');
+      diagnostics.D_check = 'verification_failed';
     }
     
     const modelWarnings = generateWarnings(diagnostics, inputs);

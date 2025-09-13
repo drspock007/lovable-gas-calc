@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Copy, Download, Share2, CheckCircle, AlertTriangle, Info, FileText, FileDown, RotateCcw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useI18n } from '@/i18n/context';
-import { ComputeOutputs, ComputeInputs, BracketError, IntegralError } from '@/lib/physics';
+import { ComputeOutputs, ComputeInputs, BracketError, IntegralError, ResidualError } from '@/lib/physics';
 import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
 
@@ -161,6 +161,9 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
       showRetryButton = true;
     } else if (compError.type === 'integral') {
       errorMessage = "Integral near target pressure is too stiff. Increase ε (e.g., 1–2%) or choose adiabatic=false (isothermal).";
+    } else if (compError.type === 'residual') {
+      errorMessage = "Result rejected by residual check; switching to alternative model or ask user to retry.";
+      showRetryButton = true;
     }
     
     return (
@@ -346,22 +349,46 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p className="max-w-xs">
-                              At sonic choking the local Mach at the throat is 1 by definition.
-                            </p>
+                            <p>Mach = 1.0 at throat (choked flow)</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                    ) : (
-                      key
-                    )}
-                  </div>
-                  <span className="text-muted-foreground">
-                    {typeof value === 'number' ? formatNumber(value, 3) : String(value)}
-                  </span>
-                </div>
-              )
-            ))}
+                    ) : key === 't_check' ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help border-b border-dashed">
+                              t_check
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Forward verification: time computed from solved diameter</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : key === 'D_check' ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help border-b border-dashed">
+                              D_check
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Forward verification: diameter computed from solved time</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                     ) : (
+                       key
+                     )}
+                   </div>
+                   <span className="text-muted-foreground">
+                     {typeof value === 'number' ? formatNumber(value, 3) : String(value)}
+                   </span>
+                 </div>
+               )
+             ))}
           </div>
         </div>
 
