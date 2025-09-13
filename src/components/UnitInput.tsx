@@ -155,7 +155,8 @@ export const UnitInput: React.FC<UnitInputProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             required={required}
-            className={`w-full touch-target px-3 py-2 border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-transparent ${
+            className={`w-full touch-target px-3 py-2 border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-transparent 
+              [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
               hasError || error 
                 ? 'border-destructive focus:ring-destructive' 
                 : 'border-border'

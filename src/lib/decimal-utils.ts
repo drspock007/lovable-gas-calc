@@ -3,13 +3,10 @@
  * Handles both comma and dot as decimal separators
  */
 
-export function parseDecimalFlexible(s: string): number | null {
-  if (!s || typeof s !== 'string') return null;
-  
-  // Remove whitespace and normalize decimal separator
+export function parseDecimalFlexible(s: string | null | undefined): number | null {
+  if (s == null || s.trim() === '') return null;
   const t = s.replace(/\s/g, '').replace(',', '.');
   const n = Number(t);
-  
   return Number.isFinite(n) ? n : null;
 }
 
