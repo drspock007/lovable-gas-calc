@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { ComputeInputs, SamplingData, sample_tA, TASampler } from '@/lib/physics';
+import { ComputeInputs, SamplingData, sample_tA, TASampler, ComputeOutputs } from '@/lib/physics';
 import { formatLength } from '@/lib/length-units';
 import { useI18n } from '@/i18n/context';
 import { useToast } from '@/hooks/use-toast';
@@ -17,24 +17,51 @@ interface DebugPanelProps {
   onDebugToggle: (enabled: boolean) => void;
   siInputs?: ComputeInputs | null;
   samplingData?: SamplingData | null;
+  results?: ComputeOutputs | null;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
   debugMode,
   onDebugToggle,
   siInputs,
-  samplingData
+  samplingData,
+  results
 }) => {
   const { t } = useI18n();
   const { toast } = useToast();
   
+  // Calculate smart defaults for A_lo and A_hi based on current solution
+  const getSmartDefaults = () => {
+    const D_SI_m = results?.solverResultSI?.D_SI_m;
+    if (D_SI_m && D_SI_m > 0) {
+      // A* = π * D²/4
+      const A_star = Math.PI * Math.pow(D_SI_m, 2) / 4;
+      return {
+        A_lo: (A_star / 10).toExponential(),
+        A_hi: (A_star * 10).toExponential()
+      };
+    }
+    // Default fallback
+    return {
+      A_lo: '1e-12',
+      A_hi: '1e-8'
+    };
+  };
+  
   // t(A) Sampler state
   const [samplerModel, setSamplerModel] = useState<'orifice' | 'capillary'>('orifice');
-  const [samplerALo, setSamplerALo] = useState('1e-12');
-  const [samplerAHi, setSamplerAHi] = useState('1e-8');
+  const [samplerALo, setSamplerALo] = useState(() => getSmartDefaults().A_lo);
+  const [samplerAHi, setSamplerAHi] = useState(() => getSmartDefaults().A_hi);
   const [samplerN, setSamplerN] = useState('5');
   const [samplerResults, setSamplerResults] = useState<TASampler | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  
+  // Update defaults when results change
+  useEffect(() => {
+    const defaults = getSmartDefaults();
+    setSamplerALo(defaults.A_lo);
+    setSamplerAHi(defaults.A_hi);
+  }, [results?.solverResultSI?.D_SI_m]);
   
   const runSampler = async () => {
     if (!siInputs) {
@@ -317,6 +344,19 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       min="2"
                     />
                   </div>
+                </div>
+
+                {/* Helper Text */}
+                <div className="p-3 bg-muted/30 rounded-lg border border-primary/20">
+                  <p className="text-xs text-muted-foreground">
+                    <strong className="text-primary">Expected:</strong> t(A) should <strong>decrease</strong> as A increases. 
+                    If not, adjust ε (e.g., 1–2%) or widen the range.
+                  </p>
+                  {results?.solverResultSI?.D_SI_m && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      <strong>Smart range:</strong> Centered around current solution D = {formatLength(results.solverResultSI.D_SI_m, 'mm', 3)} mm
+                    </p>
+                  )}
                 </div>
 
                 {/* Run Button */}
