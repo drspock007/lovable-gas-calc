@@ -404,8 +404,10 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     let D_capillary: number | undefined;
     let D_orifice: number | undefined;
     const warnings: string[] = [];
+    let capillary_error: string | undefined;
+    let orifice_error: string | undefined;
     
-    // Try capillary model
+    // 1) Compute D_cap via capillary model
     try {
       if (inputs.process === 'blowdown') {
         D_capillary = capillaryDfromT_blowdown(inputs);
@@ -413,12 +415,11 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
         D_capillary = capillaryDfromT_filling(inputs);
       }
     } catch (error) {
-      warnings.push(`Capillary model failed: ${(error as Error).message}`);
+      capillary_error = `Capillary model failed: ${(error as Error).message}`;
     }
     
-    // Try orifice model (inverse calculation - iterative)
+    // 2) Compute D_orif via orifice model (inverse calculation)
     try {
-      // Use iterative approach to find D for orifice model
       let D_guess = 0.001; // Start with 1mm
       const tolerance = 1e-6;
       let iterations = 0;
@@ -441,56 +442,106 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
           break;
         }
         
-        // Simple adjustment
         D_guess *= Math.pow(inputs.t! / t_calc, 0.25);
         iterations++;
       }
       
       if (iterations >= maxIterations) {
-        warnings.push('Orifice model did not converge');
+        orifice_error = 'Orifice model did not converge';
       }
     } catch (error) {
-      warnings.push(`Orifice model failed: ${(error as Error).message}`);
+      orifice_error = `Orifice model failed: ${(error as Error).message}`;
     }
     
-    // Determine verdict and select best result
+    // 3) Validate model assumptions and choose the best
     let verdict: ComputeOutputs['verdict'] = 'inconclusive';
     let D: number | undefined;
+    let rationale = '';
     
-    if (D_capillary && D_orifice) {
-      // Both models succeeded - choose based on diagnostics
-      const diag_cap = calculateDiagnostics(inputs, D_capillary);
-      const diag_ori = calculateDiagnostics(inputs, D_orifice);
+    // Check validity of each model
+    let cap_valid = false;
+    let ori_valid = false;
+    let cap_diagnostics: Record<string, number | string | boolean> = {};
+    let ori_diagnostics: Record<string, number | string | boolean> = {};
+    
+    if (D_capillary) {
+      cap_diagnostics = calculateDiagnostics(inputs, D_capillary);
+      cap_valid = (cap_diagnostics.Re as number) <= 2000 && (cap_diagnostics['L/D'] as number) >= 10;
+    }
+    
+    if (D_orifice) {
+      ori_diagnostics = calculateDiagnostics(inputs, D_orifice);
+      ori_valid = true; // Orifice model is more generally applicable
+    }
+    
+    if (cap_valid && ori_valid) {
+      // Both valid - use forward simulation to pick best
+      let cap_residual = Infinity;
+      let ori_residual = Infinity;
       
-      const cap_valid = (diag_cap.Re as number) <= 2000 && (diag_cap['L/D'] as number) >= 10;
-      const ori_valid = true; // Orifice model more generally applicable
+      try {
+        const cap_forward = inputs.process === 'blowdown' 
+          ? orificeTfromD_blowdown({ ...inputs, D: D_capillary })
+          : orificeTfromD_filling({ ...inputs, D: D_capillary });
+        cap_residual = Math.abs((cap_forward - inputs.t!) / inputs.t!);
+      } catch {}
       
-      if (cap_valid && !ori_valid) {
+      try {
+        const ori_forward = inputs.process === 'blowdown'
+          ? orificeTfromD_blowdown({ ...inputs, D: D_orifice })
+          : orificeTfromD_filling({ ...inputs, D: D_orifice });
+        ori_residual = Math.abs((ori_forward - inputs.t!) / inputs.t!);
+      } catch {}
+      
+      if (cap_residual < ori_residual) {
         verdict = 'capillary';
         D = D_capillary;
-      } else if (!cap_valid && ori_valid) {
+        rationale = `Both models valid. Capillary chosen (lower residual: ${(cap_residual * 100).toFixed(3)}% vs ${(ori_residual * 100).toFixed(3)}%). Re=${Math.round(cap_diagnostics.Re as number)}, L/D=${Math.round(cap_diagnostics['L/D'] as number)}.`;
+      } else {
         verdict = 'orifice';
         D = D_orifice;
-      } else if (cap_valid && ori_valid) {
-        verdict = 'both';
-        D = D_capillary; // Prefer capillary if both valid
-      } else {
-        verdict = 'inconclusive';
-        D = D_orifice; // Default to orifice
+        rationale = `Both models valid. Orifice chosen (lower residual: ${(ori_residual * 100).toFixed(3)}% vs ${(cap_residual * 100).toFixed(3)}%). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
       }
+    } else if (cap_valid && !ori_valid) {
+      verdict = 'capillary';
+      D = D_capillary;
+      rationale = `Capillary model valid (Re=${Math.round(cap_diagnostics.Re as number)}, L/D=${Math.round(cap_diagnostics['L/D'] as number)}). Orifice model assumptions not met.`;
+    } else if (!cap_valid && ori_valid) {
+      verdict = 'orifice';
+      D = D_orifice;
+      rationale = `Orifice model chosen. Capillary invalid (Re=${cap_diagnostics.Re ? Math.round(cap_diagnostics.Re as number) : 'N/A'}, L/D=${cap_diagnostics['L/D'] ? Math.round(cap_diagnostics['L/D'] as number) : 'N/A'}). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+    } else if (D_capillary && D_orifice) {
+      verdict = 'both';
+      D = D_orifice; // Default to orifice when both invalid
+      rationale = `Neither model fully valid. Both results shown for comparison. Consider checking input parameters.`;
+      warnings.push(`Capillary: Re=${cap_diagnostics.Re ? Math.round(cap_diagnostics.Re as number) : 'N/A'} (need ≤2000), L/D=${cap_diagnostics['L/D'] ? Math.round(cap_diagnostics['L/D'] as number) : 'N/A'} (need ≥10)`);
     } else if (D_capillary) {
       verdict = 'capillary';
       D = D_capillary;
+      rationale = `Only capillary model converged. ${cap_valid ? 'Valid' : 'Invalid'} assumptions.`;
     } else if (D_orifice) {
       verdict = 'orifice';
       D = D_orifice;
+      rationale = `Only orifice model converged. ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
     }
     
     if (!D) {
       throw new Error('No valid solution found');
     }
     
+    // Add model-specific errors to warnings
+    if (capillary_error) warnings.push(capillary_error);
+    if (orifice_error) warnings.push(orifice_error);
+    
     const diagnostics = calculateDiagnostics(inputs, D);
+    diagnostics.rationale = rationale;
+    
+    // Add alternative results if both computed
+    if (D_capillary && D_orifice && D_capillary !== D_orifice) {
+      diagnostics.D_capillary = D_capillary;
+      diagnostics.D_orifice = D_orifice;
+    }
+    
     const modelWarnings = generateWarnings(diagnostics, inputs);
     
     return {
@@ -503,7 +554,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
   } catch (error) {
     return {
       verdict: 'inconclusive',
-      diagnostics: {},
+      diagnostics: { rationale: `Computation failed: ${(error as Error).message}` },
       warnings: [`Computation failed: ${(error as Error).message}`],
     };
   }
@@ -519,20 +570,21 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
     let t_capillary: number | undefined;
     let t_orifice: number | undefined;
     const warnings: string[] = [];
+    let capillary_error: string | undefined;
+    let orifice_error: string | undefined;
     
-    // Try capillary model
+    // 1) Compute t_cap via capillary model
     try {
       if (inputs.process === 'filling') {
         t_capillary = capillaryTfromD_filling(inputs);
       } else {
-        // For blowdown, would need numerical integration
-        warnings.push('Capillary blowdown time calculation not implemented');
+        capillary_error = 'Capillary blowdown time calculation not implemented';
       }
     } catch (error) {
-      warnings.push(`Capillary model failed: ${(error as Error).message}`);
+      capillary_error = `Capillary model failed: ${(error as Error).message}`;
     }
     
-    // Try orifice model
+    // 2) Compute t_orif via orifice model
     try {
       if (inputs.process === 'blowdown') {
         t_orifice = orificeTfromD_blowdown(inputs);
@@ -540,29 +592,116 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
         t_orifice = orificeTfromD_filling(inputs);
       }
     } catch (error) {
-      warnings.push(`Orifice model failed: ${(error as Error).message}`);
+      orifice_error = `Orifice model failed: ${(error as Error).message}`;
     }
     
-    // Determine verdict and select best result
+    // 3) Validate model assumptions and choose the best
     let verdict: ComputeOutputs['verdict'] = 'inconclusive';
     let t: number | undefined;
+    let rationale = '';
     
-    if (t_capillary && t_orifice) {
+    // Check validity of each model
+    let cap_valid = false;
+    let ori_valid = false;
+    const diagnostics = calculateDiagnostics(inputs, inputs.D!);
+    
+    if (t_capillary) {
+      cap_valid = (diagnostics.Re as number) <= 2000 && (diagnostics['L/D'] as number) >= 10;
+    }
+    
+    if (t_orifice) {
+      ori_valid = true; // Orifice model is more generally applicable
+    }
+    
+    if (cap_valid && ori_valid) {
+      // Both valid - use forward simulation to pick best
+      let cap_residual = Infinity;
+      let ori_residual = Infinity;
+      
+      try {
+        const cap_forward = inputs.process === 'blowdown' 
+          ? capillaryDfromT_blowdown({ ...inputs, t: t_capillary })
+          : capillaryDfromT_filling({ ...inputs, t: t_capillary });
+        cap_residual = Math.abs((cap_forward - inputs.D!) / inputs.D!);
+      } catch {}
+      
+      try {
+        // Use iterative approach for orifice D from t
+        let D_guess = 0.001;
+        const tolerance = 1e-6;
+        let iterations = 0;
+        const maxIterations = 30;
+        
+        while (iterations < maxIterations) {
+          const testInputs = { ...inputs, D: D_guess };
+          let t_calc: number;
+          
+          if (inputs.process === 'blowdown') {
+            t_calc = orificeTfromD_blowdown(testInputs);
+          } else {
+            t_calc = orificeTfromD_filling(testInputs);
+          }
+          
+          const error = Math.abs((t_calc - t_orifice!) / t_orifice!);
+          
+          if (error < tolerance) {
+            ori_residual = Math.abs((D_guess - inputs.D!) / inputs.D!);
+            break;
+          }
+          
+          D_guess *= Math.pow(t_orifice! / t_calc, 0.25);
+          iterations++;
+        }
+      } catch {}
+      
+      if (cap_residual < ori_residual) {
+        verdict = 'capillary';
+        t = t_capillary;
+        rationale = `Both models valid. Capillary chosen (lower residual: ${(cap_residual * 100).toFixed(3)}% vs ${(ori_residual * 100).toFixed(3)}%). Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}.`;
+      } else {
+        verdict = 'orifice';
+        t = t_orifice;
+        rationale = `Both models valid. Orifice chosen (lower residual: ${(ori_residual * 100).toFixed(3)}% vs ${(cap_residual * 100).toFixed(3)}%). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      }
+    } else if (cap_valid && !ori_valid) {
+      verdict = 'capillary';
+      t = t_capillary;
+      rationale = `Capillary model valid (Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}). Orifice model assumptions not met.`;
+    } else if (!cap_valid && ori_valid) {
+      verdict = 'orifice';
+      t = t_orifice;
+      rationale = `Orifice model chosen. Capillary invalid (Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+    } else if (t_capillary && t_orifice) {
       verdict = 'both';
-      t = t_capillary; // Prefer capillary if both valid
+      t = t_orifice; // Default to orifice when both invalid
+      rationale = `Neither model fully valid. Both results shown for comparison. Consider checking input parameters.`;
+      warnings.push(`Capillary: Re=${Math.round(diagnostics.Re as number)} (need ≤2000), L/D=${Math.round(diagnostics['L/D'] as number)} (need ≥10)`);
     } else if (t_capillary) {
       verdict = 'capillary';
       t = t_capillary;
+      rationale = `Only capillary model converged. ${cap_valid ? 'Valid' : 'Invalid'} assumptions.`;
     } else if (t_orifice) {
       verdict = 'orifice';
       t = t_orifice;
+      rationale = `Only orifice model converged. ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
     }
     
     if (!t) {
       throw new Error('No valid solution found');
     }
     
-    const diagnostics = calculateDiagnostics(inputs, inputs.D!);
+    // Add model-specific errors to warnings
+    if (capillary_error) warnings.push(capillary_error);
+    if (orifice_error) warnings.push(orifice_error);
+    
+    diagnostics.rationale = rationale;
+    
+    // Add alternative results if both computed
+    if (t_capillary && t_orifice && t_capillary !== t_orifice) {
+      diagnostics.t_capillary = t_capillary;
+      diagnostics.t_orifice = t_orifice;
+    }
+    
     const modelWarnings = generateWarnings(diagnostics, inputs);
     
     return {
@@ -575,7 +714,7 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
   } catch (error) {
     return {
       verdict: 'inconclusive',
-      diagnostics: {},
+      diagnostics: { rationale: `Computation failed: ${(error as Error).message}` },
       warnings: [`Computation failed: ${(error as Error).message}`],
     };
   }
