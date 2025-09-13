@@ -1265,6 +1265,13 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       diagnostics['t(A_hi)'] = samplingData.bracketInfo.t_A_hi;
       diagnostics.expansions = samplingData.bracketInfo.expansions;
       
+      // Add explicit bracket information for debugging
+      diagnostics.bracket_A_lo_m2 = samplingData.bracketInfo.A_lo;
+      diagnostics.bracket_A_hi_m2 = samplingData.bracketInfo.A_hi;
+      diagnostics.bracket_t_lo_s = samplingData.bracketInfo.t_A_lo;
+      diagnostics.bracket_t_hi_s = samplingData.bracketInfo.t_A_hi;
+      diagnostics.bracket_expansions = samplingData.bracketInfo.expansions;
+      
       // Add monotonicity warning if needed
       if (!samplingData.monotonic) {
         warnings.push('Sampling detected non-monotonic t(A) - results may be unreliable');
@@ -1711,6 +1718,70 @@ export function sample_tA(
   const g = (i: number) => Math.exp(Math.log(A_lo) + (Math.log(A_hi) - Math.log(A_lo)) * (i / (n - 1)));
   const out: TASample[] = [];
   
+  // Capture bracket information for orifice model
+  let bracket: TASampler['bracket'] | undefined;
+  
+  if (model === 'orifice' && inputs.t) {
+    // Try to determine what bracket would be used for this target time
+    try {
+      const t_target = inputs.t;
+      let bracket_A_lo = A_lo;
+      let bracket_A_hi = A_hi;
+      let expansions = 0;
+      
+      // Simulate the bracketing process
+      const objectiveFunction = (A: number): number => {
+        try {
+          const t_calc = timeOrificeFromAreaSI(inputs, A);
+          return t_calc - t_target;
+        } catch {
+          return NaN;
+        }
+      };
+      
+      // Try to find a valid bracket within the sampling range
+      const maxExpansions = 8; // Reduced for sampling
+      while (expansions < maxExpansions) {
+        try {
+          const f_lo = objectiveFunction(bracket_A_lo);
+          const f_hi = objectiveFunction(bracket_A_hi);
+          
+          if (!isNaN(f_lo) && !isNaN(f_hi) && f_lo * f_hi < 0) {
+            // We have a valid bracket
+            const t_lo = timeOrificeFromAreaSI(inputs, bracket_A_lo);
+            const t_hi = timeOrificeFromAreaSI(inputs, bracket_A_hi);
+            
+            bracket = {
+              A_lo: bracket_A_lo,
+              A_hi: bracket_A_hi,
+              t_lo,
+              t_hi,
+              expansions
+            };
+            break;
+          }
+          
+          // Expand bracket
+          if (isNaN(f_lo) || f_lo < 0) {
+            bracket_A_lo /= 10;
+          }
+          if (isNaN(f_hi) || f_hi > 0) {
+            bracket_A_hi *= 10;
+          }
+          
+          expansions++;
+        } catch {
+          // If evaluation fails, try expanding
+          bracket_A_lo /= 10;
+          bracket_A_hi *= 10;
+          expansions++;
+        }
+      }
+    } catch {
+      // Bracket detection failed, continue without bracket info
+    }
+  }
+  
   for (let i = 0; i < n; i++) {
     const A = g(i);
     const D = Math.sqrt(4 * A / Math.PI);
@@ -1753,5 +1824,5 @@ export function sample_tA(
     out.push({ A_m2: A, D_m: D, t_s: t, choked, phase });
   }
   
-  return { model, samples: out };
+  return { model, samples: out, bracket };
 }
