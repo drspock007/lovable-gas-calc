@@ -160,6 +160,44 @@ export const InputsCard: React.FC<InputsCardProps> = ({
     return `${gaugeInUnit.toFixed(3)} ${unit}`;
   };
 
+  // Handle pressure mode switching with physical pressure preservation
+  const handlePressureModeChange = (newMode: 'absolute' | 'gauge') => {
+    if (newMode === values.pressureInputMode) return;
+
+    const atmSI = getAtmosphericPressure();
+    const oldMode = values.pressureInputMode;
+
+    // Convert current pressure values to preserve physical pressure
+    const convertPressure = (value: number, unit: string) => {
+      const currentSI = toSI_Pressure(value, unit as PressureUnit);
+      let physicalSI: number;
+
+      if (oldMode === 'gauge' && newMode === 'absolute') {
+        // Converting from gauge to absolute: add atmospheric pressure
+        physicalSI = absFromGauge(currentSI, atmSI);
+      } else if (oldMode === 'absolute' && newMode === 'gauge') {
+        // Converting from absolute to gauge: subtract atmospheric pressure
+        physicalSI = gaugeFromAbs(currentSI, atmSI);
+      } else {
+        physicalSI = currentSI;
+      }
+
+      return fromSI_Pressure(physicalSI, unit as PressureUnit);
+    };
+
+    // Convert all pressure values
+    const newValues = { ...values };
+    newValues.pressureInputMode = newMode;
+    newValues.P1 = convertPressure(values.P1, values.P1_unit);
+    newValues.P2 = convertPressure(values.P2, values.P2_unit);
+    
+    if (values.Ps && values.Ps_unit) {
+      newValues.Ps = convertPressure(values.Ps, values.Ps_unit);
+    }
+
+    onChange(newValues);
+  };
+
   return (
     <Card className="engineering-card">
       <CardHeader>
@@ -207,7 +245,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   name="pressureMode"
                   value="gauge"
                   checked={values.pressureInputMode === 'gauge'}
-                  onChange={(e) => updateValue('pressureInputMode', e.target.value)}
+                  onChange={(e) => handlePressureModeChange(e.target.value as 'gauge')}
                   className="text-primary focus:ring-primary"
                 />
                 <span className="text-sm" title={t('tooltips.gauge')}>{t('pressureMode.gauge')}</span>
@@ -218,7 +256,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   name="pressureMode"
                   value="absolute"
                   checked={values.pressureInputMode === 'absolute'}
-                  onChange={(e) => updateValue('pressureInputMode', e.target.value)}
+                  onChange={(e) => handlePressureModeChange(e.target.value as 'absolute')}
                   className="text-primary focus:ring-primary"
                 />
                 <span className="text-sm">{t('pressureMode.absolute')}</span>
@@ -287,16 +325,21 @@ export const InputsCard: React.FC<InputsCardProps> = ({
         {/* Pressure Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <UnitInput
-              label={`${process === 'blowdown' ? 'Initial Pressure' : 'Initial Pressure'} (${values.pressureInputMode})`}
-              type="pressure"
-              value={values.P1}
-              unit={values.P1_unit}
-              onChange={(v) => updateValue('P1', v)}
-              onUnitChange={(u) => updateValue('P1_unit', u)}
-              required
-              min={0}
-            />
+            <div className="flex items-center gap-2">
+              <UnitInput
+                label={`${process === 'blowdown' ? 'Initial Pressure' : 'Initial Pressure'} (${values.pressureInputMode})`}
+                type="pressure"
+                value={values.P1}
+                unit={values.P1_unit}
+                onChange={(v) => updateValue('P1', v)}
+                onUnitChange={(u) => updateValue('P1_unit', u)}
+                required
+                min={0}
+              />
+              {values.pressureInputMode === 'gauge' && (
+                <Badge variant="secondary" className="text-xs mt-6 shrink-0">g</Badge>
+              )}
+            </div>
             {values.pressureInputMode === 'gauge' && (
               <div className="text-xs text-muted-foreground">
                 = {getAbsolutePressureDisplay(values.P1, values.P1_unit)} abs
@@ -323,6 +366,9 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   min={0}
                 />
               </div>
+              {values.pressureInputMode === 'gauge' && (
+                <Badge variant="secondary" className="text-xs mt-6 shrink-0">g</Badge>
+              )}
               {process === 'blowdown' && values.pressureInputMode === 'gauge' && (
                 <Button
                   variant="outline"
@@ -350,16 +396,21 @@ export const InputsCard: React.FC<InputsCardProps> = ({
         {/* Supply Pressure for Filling */}
         {process === 'filling' && (
           <div className="space-y-2">
-            <UnitInput
-              label={`Supply Pressure (Ps) (${values.pressureInputMode})`}
-              type="pressure"
-              value={values.Ps || 15}
-              unit={values.Ps_unit || 'bar'}
-              onChange={(v) => updateValue('Ps', v)}
-              onUnitChange={(u) => updateValue('Ps_unit', u)}
-              required
-              min={0}
-            />
+            <div className="flex items-center gap-2">
+              <UnitInput
+                label={`Supply Pressure (Ps) (${values.pressureInputMode})`}
+                type="pressure"
+                value={values.Ps || 15}
+                unit={values.Ps_unit || 'bar'}
+                onChange={(v) => updateValue('Ps', v)}
+                onUnitChange={(u) => updateValue('Ps_unit', u)}
+                required
+                min={0}
+              />
+              {values.pressureInputMode === 'gauge' && (
+                <Badge variant="secondary" className="text-xs mt-6 shrink-0">g</Badge>
+              )}
+            </div>
             {values.pressureInputMode === 'gauge' && (
               <div className="text-xs text-muted-foreground">
                 = {getAbsolutePressureDisplay(values.Ps || 15, values.Ps_unit || 'bar')} abs
