@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, Settings } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
 import { UnitInput } from './UnitInput';
+import { GasSelector } from './GasSelector';
 import { GASES, GasProps } from '@/lib/physics';
 import { ProcessType, SolveForType } from './ModeSelector';
 
@@ -100,6 +101,24 @@ export const InputsCard: React.FC<InputsCardProps> = ({
 
   const updateValue = (key: keyof InputValues, value: any) => {
     onChange({ ...values, [key]: value });
+  };
+
+  const getSelectedGas = (): GasProps => {
+    if (values.gasType === 'custom' && values.customGas) {
+      return values.customGas;
+    }
+    return GASES[values.gasType as keyof typeof GASES] || GASES.air;
+  };
+
+  const handleGasChange = (gas: GasProps) => {
+    if (gas.name === 'Custom Gas' || !Object.values(GASES).find(g => g.name === gas.name)) {
+      updateValue('gasType', 'custom');
+      updateValue('customGas', gas);
+    } else {
+      const gasKey = Object.entries(GASES).find(([_, g]) => g.name === gas.name)?.[0] || 'air';
+      updateValue('gasType', gasKey);
+      updateValue('customGas', undefined);
+    }
   };
 
   return (
@@ -215,27 +234,10 @@ export const InputsCard: React.FC<InputsCardProps> = ({
         )}
 
         {/* Gas Selection */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Gas Type</label>
-          <Select 
-            value={values.gasType} 
-            onValueChange={(v) => updateValue('gasType', v)}
-          >
-            <SelectTrigger className="bg-background border-border z-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-background border-border shadow-elevated z-40">
-              {Object.entries(GASES).map(([key, gas]) => (
-                <SelectItem key={key} value={key} className="hover:bg-accent">
-                  {gas.name} (M={gas.M.toFixed(3)} kg/mol, γ={gas.gamma})
-                </SelectItem>
-              ))}
-              <SelectItem value="custom" className="hover:bg-accent">
-                Custom Gas Properties
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <GasSelector
+          selectedGas={getSelectedGas()}
+          onGasChange={handleGasChange}
+        />
 
         {/* Advanced Options */}
         <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>

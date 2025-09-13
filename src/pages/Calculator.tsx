@@ -30,10 +30,26 @@ export const Calculator: React.FC = () => {
   
   const [process, setProcess] = useState<ProcessType>('blowdown');
   const [solveFor, setSolveFor] = useState<SolveForType>('DfromT');
-  const [inputValues, setInputValues] = useState<InputValues>({} as InputValues);
+  const [inputValues, setInputValues] = useState<InputValues>(() => {
+    // Load from localStorage on mount
+    const stored = localStorage.getItem('gasTransfer-inputValues');
+    if (stored) {
+      try {
+        return { ...JSON.parse(stored) };
+      } catch {
+        return {} as InputValues;
+      }
+    }
+    return {} as InputValues;
+  });
   const [results, setResults] = useState<ComputeOutputs | null>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+
+  // Persist input values to localStorage
+  React.useEffect(() => {
+    localStorage.setItem('gasTransfer-inputValues', JSON.stringify(inputValues));
+  }, [inputValues]);
 
   const handleCalculate = async () => {
     setLoading(true);
