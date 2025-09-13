@@ -262,10 +262,14 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   step="0.001"
                   min={0.001}
                   max={0.1}
+                  placeholder="0.01"
                   className="w-full touch-target px-3 py-2 border border-border rounded-md bg-background text-foreground"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Final pressure: P2×(1{process === 'blowdown' ? '+' : '−'}ε)
+                  We stop at P_f = P_2·(1{process === 'blowdown' ? '+' : '−'}ε) to avoid the endpoint singularity.
+                </p>
+                <p className="text-xs text-blue-600">
+                  Default: 0.01 (1%). Increase to 1-2% if integration becomes too stiff.
                 </p>
               </div>
 

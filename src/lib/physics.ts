@@ -574,6 +574,51 @@ function orificeTfromD_blowdown(inputs: ComputeInputs): number {
 
 // ============= ROBUST ROOT FINDING FOR D FROM T =============
 
+// ============= BRACKET PERSISTENCE =============
+
+interface BracketCache {
+  A_lo: number;
+  A_hi: number;
+  timestamp: number;
+  processType: string;
+  gasType: string;
+}
+
+function saveBracketToCache(A_lo: number, A_hi: number, process: string, gasName: string) {
+  try {
+    const cacheKey = `gasTransfer-bracket-${process}-${gasName}`;
+    const cache: BracketCache = {
+      A_lo,
+      A_hi,
+      timestamp: Date.now(),
+      processType: process,
+      gasType: gasName,
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(cache));
+  } catch (error) {
+    // Silent fail - bracket caching is optimization only
+  }
+}
+
+function loadBracketFromCache(process: string, gasName: string): [number, number] | null {
+  try {
+    const cacheKey = `gasTransfer-bracket-${process}-${gasName}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (!cached) return null;
+    
+    const cache: BracketCache = JSON.parse(cached);
+    
+    // Use cached bracket if less than 1 hour old
+    const ageHours = (Date.now() - cache.timestamp) / (1000 * 60 * 60);
+    if (ageHours < 1 && cache.processType === process && cache.gasType === gasName) {
+      return [cache.A_lo, cache.A_hi];
+    }
+  } catch (error) {
+    // Silent fail - bracket caching is optimization only
+  }
+  return null;
+}
+
 /**
  * Solve for diameter from time using robust root finding with auto-bracketing
  * @param inputs Computation inputs
@@ -581,6 +626,7 @@ function orificeTfromD_blowdown(inputs: ComputeInputs): number {
  */
 function solveOrificeDfromT(inputs: ComputeInputs): number {
   const t_target = inputs.t!;
+  const gasName = inputs.gas.name || 'unknown';
   
   // Define objective function f(A) = t_model(A) - t_target
   const objectiveFunction = (A: number): number => {
@@ -597,9 +643,18 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
     return t_calc - t_target;
   };
   
-  // Initial bracket
-  let A_lo = 1e-12; // Very small area
-  let A_hi = 1e-2;  // Large area (D ≈ 112.8 mm)
+  // Try to load cached bracket first
+  const cachedBracket = loadBracketFromCache(inputs.process, gasName);
+  let A_lo: number, A_hi: number;
+  
+  if (cachedBracket) {
+    [A_lo, A_hi] = cachedBracket;
+    console.log(`Using cached bracket: A_lo=${A_lo.toExponential(3)}, A_hi=${A_hi.toExponential(3)}`);
+  } else {
+    // Default initial bracket
+    A_lo = 1e-12; // Very small area
+    A_hi = 1e-2;  // Large area (D ≈ 112.8 mm)
+  }
   
   // Auto-expand bracket up to 12 times
   let expansions = 0;
@@ -652,6 +707,9 @@ function solveOrificeDfromT(inputs: ComputeInputs): number {
     );
   }
   
+  // Save successful bracket for future use
+  saveBracketToCache(A_lo, A_hi, inputs.process, gasName);
+  
   // Convert area back to diameter
   const D = Math.sqrt(4 * A_solution / Math.PI);
   
@@ -676,6 +734,7 @@ export { solveOrificeDfromTWithRetry };
  */
 function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number = 1): number {
   const t_target = inputs.t!;
+  const gasName = inputs.gas.name || 'unknown';
   
   // Define objective function f(A) = t_model(A) - t_target
   const objectiveFunction = (A: number): number => {
@@ -692,9 +751,20 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
     return t_calc - t_target;
   };
   
-  // Expanded initial bracket
-  let A_lo = 1e-12 / Math.pow(expandFactor, 2); // Divide A_lo by expandFactor^2
-  let A_hi = 1e-2 * Math.pow(expandFactor, 2);  // Multiply A_hi by expandFactor^2
+  // Try cached bracket first, then expand
+  const cachedBracket = loadBracketFromCache(inputs.process, gasName);
+  let A_lo: number, A_hi: number;
+  
+  if (cachedBracket) {
+    [A_lo, A_hi] = cachedBracket;
+    // Apply expansion factor to cached bracket
+    A_lo = A_lo / Math.pow(expandFactor, 2);
+    A_hi = A_hi * Math.pow(expandFactor, 2);
+  } else {
+    // Expanded initial bracket
+    A_lo = 1e-12 / Math.pow(expandFactor, 2); // Divide A_lo by expandFactor^2
+    A_hi = 1e-2 * Math.pow(expandFactor, 2);  // Multiply A_hi by expandFactor^2
+  }
   
   // Auto-expand bracket up to 12 times
   let expansions = 0;
@@ -746,6 +816,9 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
       { A_lo, A_hi, method: 'Brent', t_target, expandFactor }
     );
   }
+  
+  // Save successful expanded bracket for future use
+  saveBracketToCache(A_lo, A_hi, inputs.process, gasName);
   
   // Convert area back to diameter
   const D = Math.sqrt(4 * A_solution / Math.PI);
@@ -964,15 +1037,26 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     let D: number | undefined;
     let rationale = '';
     
-    // Check validity of each model
+    // Check validity of each model with smart de-prioritization
     let cap_valid = false;
     let ori_valid = false;
     let cap_diagnostics: Record<string, number | string | boolean> = {};
     let ori_diagnostics: Record<string, number | string | boolean> = {};
+    let capillary_deprioritized = false;
     
     if (D_capillary) {
       cap_diagnostics = calculateDiagnostics(inputs, D_capillary);
-      cap_valid = (cap_diagnostics.Re as number) <= 2000 && (cap_diagnostics['L/D'] as number) >= 10;
+      const Re = cap_diagnostics.Re as number;
+      const LoverD = cap_diagnostics['L/D'] as number;
+      
+      // Smart de-prioritization: if L/D < 10 AND Re > 5000, de-prioritize capillary
+      if (LoverD < 10 && Re > 5000) {
+        capillary_deprioritized = true;
+        cap_valid = false; // Force orifice selection
+        warnings.push(`Capillary de-prioritized: L/D=${LoverD.toFixed(1)} < 10 and Re=${Math.round(Re)} > 5000. Orifice model automatically selected.`);
+      } else {
+        cap_valid = Re <= 2000 && LoverD >= 10;
+      }
     }
     
     if (D_orifice) {
@@ -980,8 +1064,8 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       ori_valid = true; // Orifice model is more generally applicable
     }
     
-    if (cap_valid && ori_valid) {
-      // Both valid - use forward simulation to pick best
+    if (cap_valid && ori_valid && !capillary_deprioritized) {
+      // Both valid and capillary not de-prioritized - use forward simulation to pick best
       let cap_residual = Infinity;
       let ori_residual = Infinity;
       
@@ -1008,14 +1092,18 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
         D = D_orifice;
         rationale = `Both models valid. Orifice chosen (lower residual: ${(ori_residual * 100).toFixed(3)}% vs ${(cap_residual * 100).toFixed(3)}%). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
       }
-    } else if (cap_valid && !ori_valid) {
+    } else if (cap_valid && !ori_valid && !capillary_deprioritized) {
       verdict = 'capillary';
       D = D_capillary;
       rationale = `Capillary model valid (Re=${Math.round(cap_diagnostics.Re as number)}, L/D=${Math.round(cap_diagnostics['L/D'] as number)}). Orifice model assumptions not met.`;
-    } else if (!cap_valid && ori_valid) {
+    } else if ((!cap_valid && ori_valid) || (capillary_deprioritized && ori_valid)) {
       verdict = 'orifice';
       D = D_orifice;
-      rationale = `Orifice model chosen. Capillary invalid (Re=${cap_diagnostics.Re ? Math.round(cap_diagnostics.Re as number) : 'N/A'}, L/D=${cap_diagnostics['L/D'] ? Math.round(cap_diagnostics['L/D'] as number) : 'N/A'}). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      if (capillary_deprioritized) {
+        rationale = `Orifice model chosen (capillary de-prioritized due to L/D < 10 and Re > 5000). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      } else {
+        rationale = `Orifice model chosen. Capillary invalid (Re=${cap_diagnostics.Re ? Math.round(cap_diagnostics.Re as number) : 'N/A'}, L/D=${cap_diagnostics['L/D'] ? Math.round(cap_diagnostics['L/D'] as number) : 'N/A'}). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      }
     } else if (D_capillary && D_orifice) {
       verdict = 'both';
       D = D_orifice; // Default to orifice when both invalid
@@ -1126,21 +1214,32 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
     let t: number | undefined;
     let rationale = '';
     
-    // Check validity of each model
+    // Check validity of each model with smart de-prioritization
     let cap_valid = false;
     let ori_valid = false;
     const diagnostics = calculateDiagnostics(inputs, inputs.D!);
+    let capillary_deprioritized = false;
     
     if (t_capillary) {
-      cap_valid = (diagnostics.Re as number) <= 2000 && (diagnostics['L/D'] as number) >= 10;
+      const Re = diagnostics.Re as number;
+      const LoverD = diagnostics['L/D'] as number;
+      
+      // Smart de-prioritization: if L/D < 10 AND Re > 5000, de-prioritize capillary
+      if (LoverD < 10 && Re > 5000) {
+        capillary_deprioritized = true;
+        cap_valid = false; // Force orifice selection
+        warnings.push(`Capillary de-prioritized: L/D=${LoverD.toFixed(1)} < 10 and Re=${Math.round(Re)} > 5000. Orifice model automatically selected.`);
+      } else {
+        cap_valid = Re <= 2000 && LoverD >= 10;
+      }
     }
     
     if (t_orifice) {
       ori_valid = true; // Orifice model is more generally applicable
     }
     
-    if (cap_valid && ori_valid) {
-      // Both valid - use forward simulation to pick best
+    if (cap_valid && ori_valid && !capillary_deprioritized) {
+      // Both valid and capillary not de-prioritized - use forward simulation to pick best
       let cap_residual = Infinity;
       let ori_residual = Infinity;
       
@@ -1189,14 +1288,18 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
         t = t_orifice;
         rationale = `Both models valid. Orifice chosen (lower residual: ${(ori_residual * 100).toFixed(3)}% vs ${(cap_residual * 100).toFixed(3)}%). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
       }
-    } else if (cap_valid && !ori_valid) {
+    } else if (cap_valid && !ori_valid && !capillary_deprioritized) {
       verdict = 'capillary';
       t = t_capillary;
       rationale = `Capillary model valid (Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}). Orifice model assumptions not met.`;
-    } else if (!cap_valid && ori_valid) {
+    } else if ((!cap_valid && ori_valid) || (capillary_deprioritized && ori_valid)) {
       verdict = 'orifice';
       t = t_orifice;
-      rationale = `Orifice model chosen. Capillary invalid (Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      if (capillary_deprioritized) {
+        rationale = `Orifice model chosen (capillary de-prioritized due to L/D < 10 and Re > 5000). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      } else {
+        rationale = `Orifice model chosen. Capillary invalid (Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      }
     } else if (t_capillary && t_orifice) {
       verdict = 'both';
       t = t_orifice; // Default to orifice when both invalid

@@ -257,6 +257,26 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
           </div>
         </div>
 
+        {/* Smart De-prioritization Warning Banner */}
+        {results.warnings.some(w => w.includes('de-prioritized')) && (
+          <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  Model Selection Optimization
+                </p>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  {results.warnings.find(w => w.includes('de-prioritized'))}
+                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  This automatic selection improves accuracy for your flow conditions.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Model Verdict */}
         <div className="space-y-3">
           <h3 className="font-semibold flex items-center">
