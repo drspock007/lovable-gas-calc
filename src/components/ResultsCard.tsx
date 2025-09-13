@@ -9,7 +9,7 @@ import { useI18n } from '@/i18n/context';
 import { ComputeOutputs, ComputeInputs, BracketError, IntegralError, ResidualError } from '@/lib/physics';
 import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
-import { formatLength, LengthUnit, LENGTH_LABEL } from '@/lib/length-units';
+import { formatLength, LengthUnit, LENGTH_LABEL, toSI_Length } from '@/lib/length-units';
 
 interface ResultsCardProps {
   results: ComputeOutputs | null;
@@ -19,6 +19,11 @@ interface ResultsCardProps {
   onRetry?: () => void;
   debugMode?: boolean;
   userLengthUnit?: LengthUnit;
+}
+
+// Conversion back helper
+function backToSI_VisibleNumber(v: number, u: LengthUnit): number {
+  return toSI_Length(v, u);
 }
 
 export const ResultsCard: React.FC<ResultsCardProps> = ({
@@ -286,6 +291,24 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
               D_SI = {D_SI_m || 'undefined'} m, A_SI = {A_SI_m2 || 'undefined'} m², t_check = {t_SI_s || 'undefined'} s
             </div>
           )}
+          
+          {/* UI vs SI validation check */}
+          {debugMode && D_SI_m && (() => {
+            const visibleValue = formatLength(D_SI_m, userLengthUnit);
+            const backToSI = backToSI_VisibleNumber(visibleValue, userLengthUnit);
+            const percentDiff = Math.abs((backToSI - D_SI_m) / D_SI_m) * 100;
+            
+            if (percentDiff > 0.5) {
+              return (
+                <div className="mt-2">
+                  <Badge variant="destructive" className="text-xs">
+                    UI≠SI: check wiring of units
+                  </Badge>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
 
         {/* Diameter Sanity Check Banner */}
