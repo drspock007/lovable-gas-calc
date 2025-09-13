@@ -116,6 +116,8 @@ export const Calculator: React.FC = () => {
         ? toAbsSI(inputValues.Ps, inputValues.Ps_unit)
         : undefined;
 
+      console.info("[ABS CHECK]", { P1_abs, P2_abs, Patm_SI });
+
       // Convert other inputs to SI units
       const V_SI = volumeToSI(inputValues.V, inputValues.V_unit as any);
       const T_SI = temperatureToSI(inputValues.T, inputValues.T_unit as any);
