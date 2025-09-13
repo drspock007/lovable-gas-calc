@@ -54,6 +54,8 @@ export interface ComputeInputs {
   D?: number;
   /** Time [s] (when solving for diameter) */
   t?: number;
+  /** Atmospheric pressure [Pa] for diagnostics */
+  Patm_SI?: number;
 }
 
 /**

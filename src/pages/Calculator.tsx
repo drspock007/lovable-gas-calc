@@ -31,6 +31,7 @@ import {
   lengthToSI, 
   timeToSI 
 } from '@/lib/units';
+import { PressureUnit, toSI_Pressure, absFromGauge, gaugeFromAbs, patmFromAltitude, clampAbs } from '@/lib/pressure-units';
 import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
 import { DebugPanel } from '@/components/DebugPanel';
 
@@ -87,10 +88,40 @@ export const Calculator: React.FC = () => {
     setError('');
 
     try {
+      // Get user pressure unit (assume all pressure inputs use same unit for now)
+      const u = inputValues.P1_unit as PressureUnit;
+      
+      // Calculate atmospheric pressure in SI
+      const Patm_SI = 
+        inputValues.patmMode === 'standard' ? 101325 :
+        inputValues.patmMode === 'custom' ? toSI_Pressure(inputValues.patmValue?.value || 101.325, inputValues.patmValue?.unit || 'kPa') :
+        patmFromAltitude(inputValues.altitude_m ?? 0);
+
+      // Helper function to convert user input to absolute SI
+      function toAbsSI(v: number): number {
+        const x = toSI_Pressure(v, u);
+        return inputValues.pressureInputMode === 'gauge' ? absFromGauge(x, Patm_SI) : x;
+      }
+
+      // Validation guards for gauge mode
+      if (inputValues.pressureInputMode === 'gauge') {
+        const minGaugeAllowed = -Patm_SI + 200; // Allow slight margin above perfect vacuum
+        
+        if (inputValues.P1 < minGaugeAllowed / toSI_Pressure(1, u)) {
+          throw new Error('P1 gauge pressure below vacuum limit');
+        }
+        if (inputValues.P2 < minGaugeAllowed / toSI_Pressure(1, u)) {
+          throw new Error('P2 gauge pressure below vacuum limit');
+        }
+        if (process === 'filling' && inputValues.Ps && inputValues.Ps < minGaugeAllowed / toSI_Pressure(1, u)) {
+          throw new Error('Ps gauge pressure below vacuum limit');
+        }
+      }
+
       // Convert all inputs to SI units
       const V_SI = volumeToSI(inputValues.V, inputValues.V_unit as any);
-      const P1_SI = pressureToSI(inputValues.P1, inputValues.P1_unit as any);
-      const P2_SI = pressureToSI(inputValues.P2, inputValues.P2_unit as any);
+      const P1_SI = clampAbs(toAbsSI(inputValues.P1));
+      const P2_SI = clampAbs(toAbsSI(inputValues.P2));
       const T_SI = temperatureToSI(inputValues.T, inputValues.T_unit as any);
       const L_SI = lengthToSI(inputValues.L, inputValues.L_unit as any);
       
@@ -112,11 +143,12 @@ export const Calculator: React.FC = () => {
         Cd: inputValues.Cd,
         epsilon: inputValues.epsilon,
         regime: inputValues.regime,
+        Patm_SI, // Add atmospheric pressure to diagnostics
       };
 
       // Add process-specific inputs
       if (process === 'filling' && inputValues.Ps) {
-        calculationInputs.Ps = pressureToSI(inputValues.Ps, inputValues.Ps_unit as any || 'bar');
+        calculationInputs.Ps = clampAbs(toAbsSI(inputValues.Ps));
       }
 
       // Add solve-specific inputs
@@ -164,11 +196,16 @@ export const Calculator: React.FC = () => {
       }
 
       if (process === 'blowdown' && P1_SI <= P2_SI) {
-        throw new Error('Initial pressure must be greater than final pressure for blowdown');
+        throw new Error(`Initial pressure must be greater than final pressure for blowdown (P1=${(P1_SI/1000).toFixed(1)} kPa ≤ P2=${(P2_SI/1000).toFixed(1)} kPa)`);
       }
 
-      if (process === 'filling' && P1_SI >= P2_SI) {
-        throw new Error('Target pressure must be greater than initial pressure for filling');
+      if (process === 'filling' && inputValues.Ps && calculationInputs.Ps) {
+        if (P1_SI >= P2_SI) {
+          throw new Error(`Target pressure must be greater than initial pressure for filling (P2=${(P2_SI/1000).toFixed(1)} kPa ≤ P1=${(P1_SI/1000).toFixed(1)} kPa)`);
+        }
+        if (calculationInputs.Ps <= P2_SI) {
+          throw new Error(`Supply pressure must be greater than target pressure for filling (Ps=${(calculationInputs.Ps/1000).toFixed(1)} kPa ≤ P2=${(P2_SI/1000).toFixed(1)} kPa)`);
+        }
       }
 
       if (T_SI <= 0) {
@@ -247,19 +284,33 @@ export const Calculator: React.FC = () => {
       return undefined;
     }
 
+    // Calculate atmospheric pressure
+    const Patm_SI = 
+      inputValues.patmMode === 'standard' ? 101325 :
+      inputValues.patmMode === 'custom' ? toSI_Pressure(inputValues.patmValue?.value || 101.325, inputValues.patmValue?.unit || 'kPa') :
+      patmFromAltitude(inputValues.altitude_m ?? 0);
+
+    // Helper function to convert user input to absolute SI
+    const u = inputValues.P1_unit as PressureUnit;
+    function toAbsSI(v: number): number {
+      const x = toSI_Pressure(v, u);
+      return inputValues.pressureInputMode === 'gauge' ? absFromGauge(x, Patm_SI) : x;
+    }
+
     return {
       process,
       solveFor,
       V: volumeToSI(inputValues.V, inputValues.V_unit as any),
-      P1: pressureToSI(inputValues.P1, inputValues.P1_unit as any),
-      P2: pressureToSI(inputValues.P2, inputValues.P2_unit as any),
+      P1: clampAbs(toAbsSI(inputValues.P1)),
+      P2: clampAbs(toAbsSI(inputValues.P2)),
       T: temperatureToSI(inputValues.T, inputValues.T_unit as any),
       L: lengthToSI(inputValues.L, inputValues.L_unit as any),
       gas: getSelectedGas(),
       Cd: inputValues.Cd,
       epsilon: inputValues.epsilon,
       regime: inputValues.regime,
-      ...(process === 'filling' && inputValues.Ps && { Ps: pressureToSI(inputValues.Ps, (inputValues.Ps_unit || 'bar') as any) }),
+      Patm_SI,
+      ...(process === 'filling' && inputValues.Ps && { Ps: clampAbs(toAbsSI(inputValues.Ps)) }),
       ...(solveFor === 'TfromD' && inputValues.D && { D: lengthToSI(inputValues.D, (inputValues.D_unit || 'mm') as any) }),
       ...(solveFor === 'DfromT' && inputValues.t && { t: timeToSI(inputValues.t, (inputValues.t_unit || 'second') as any) }),
     };
