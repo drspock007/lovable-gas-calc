@@ -31,6 +31,23 @@ describe('Unit Conversions', () => {
       expect(volumeToSI(1000, 'liter')).toBeCloseTo(1);
       expect(volumeFromSI(1, 'liter')).toBeCloseTo(1000);
     });
+
+    it('should convert round-trip: 10 L → SI → mm³ = 10,000,000 mm³', () => {
+      const volumeInL = 10;
+      const volumeInSI = volumeToSI(volumeInL, 'L');
+      const volumeInMm3 = volumeFromSI(volumeInSI, 'mm3');
+      expect(volumeInMm3).toBeCloseTo(10_000_000);
+    });
+
+    it('should convert mm³ to m³ correctly', () => {
+      expect(volumeToSI(1_000_000_000, 'mm3')).toBeCloseTo(1);
+      expect(volumeFromSI(1, 'mm3')).toBeCloseTo(1_000_000_000);
+    });
+
+    it('should convert ft³ to m³ correctly', () => {
+      expect(volumeToSI(1, 'ft3')).toBeCloseTo(0.028316846592);
+      expect(volumeFromSI(0.028316846592, 'ft3')).toBeCloseTo(1);
+    });
   });
 
   describe('Length conversions', () => {
