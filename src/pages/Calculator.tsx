@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { ModeSelector, ProcessType, SolveForType } from '@/components/ModeSelector';
 import { InputsCard, InputValues } from '@/components/InputsCard';
@@ -7,7 +7,10 @@ import { ExplainCard } from '@/components/ExplainCard';
 import { StickyBottomBar } from '@/components/StickyBottomBar';
 import { SafetyFooter } from '@/components/SafetyFooter';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { LanguageToggle } from '@/components/LanguageToggle';
+import SEOHead from '@/components/SEOHead';
 import { useI18n } from '@/i18n/context';
+import { deserializeInputsFromURL } from '@/lib/export';
 import { 
   computeDfromT, 
   computeTfromD, 
@@ -46,8 +49,20 @@ export const Calculator: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
+  // Load shared calculation from URL on mount
+  useEffect(() => {
+    const sharedInputs = deserializeInputsFromURL();
+    if (sharedInputs) {
+      setInputValues(prev => ({ ...prev, ...sharedInputs }));
+      toast({
+        title: t('success.shared'),
+        description: 'Shared calculation loaded successfully',
+      });
+    }
+  }, [toast, t]);
+
   // Persist input values to localStorage
-  React.useEffect(() => {
+  useEffect(() => {
     localStorage.setItem('gasTransfer-inputValues', JSON.stringify(inputValues));
   }, [inputValues]);
 
@@ -140,7 +155,38 @@ export const Calculator: React.FC = () => {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+    setLoading(false);
+  };
+
+  const getSelectedGas = () => {
+    if (inputValues.gasType === 'custom' && inputValues.customGas) {
+      return inputValues.customGas;
+    }
+    return GASES[inputValues.gasType as keyof typeof GASES] || GASES.air;
+  };
+
+  const computeInputs: ComputeInputs | undefined = React.useMemo(() => {
+    if (!inputValues.V || !inputValues.P1 || !inputValues.P2 || !inputValues.T || !inputValues.L) {
+      return undefined;
+    }
+
+    return {
+      process,
+      solveFor,
+      V: volumeToSI(inputValues.V, inputValues.V_unit),
+      P1: pressureToSI(inputValues.P1, inputValues.P1_unit),
+      P2: pressureToSI(inputValues.P2, inputValues.P2_unit),
+      T: temperatureToSI(inputValues.T, inputValues.T_unit),
+      L: lengthToSI(inputValues.L, inputValues.L_unit),
+      gas: getSelectedGas(),
+      Cd: inputValues.Cd,
+      epsilon: inputValues.epsilon,
+      regime: inputValues.regime,
+      ...(process === 'filling' && inputValues.Ps && { Ps: pressureToSI(inputValues.Ps, inputValues.Ps_unit || 'bar') }),
+      ...(solveFor === 'TfromD' && inputValues.D && { D: lengthToSI(inputValues.D, inputValues.D_unit || 'mm') }),
+      ...(solveFor === 'DfromT' && inputValues.t && { t: timeToSI(inputValues.t, inputValues.t_unit || 'second') }),
+    };
+  }, [inputValues, process, solveFor, getSelectedGas]);
     }
   };
 
@@ -293,9 +339,8 @@ export const Calculator: React.FC = () => {
         <ResultsCard
           results={results}
           solveFor={solveFor}
+          inputs={computeInputs}
           error={error}
-          onExport={handleExport}
-          onShare={handleShare}
         />
         
         <ExplainCard />
@@ -314,3 +359,5 @@ export const Calculator: React.FC = () => {
     </div>
   );
 };
+
+export default Calculator;
