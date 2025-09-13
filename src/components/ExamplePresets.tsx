@@ -130,6 +130,37 @@ const EXAMPLE_PRESETS: ExamplePreset[] = [
       'High pressure filling → Compressibility effects',
       'Compare with isothermal case to see temperature impact'
     ]
+  },
+  {
+    id: 'gio-mm3-sanity',
+    name: 'Gio — mm³ sanity',
+    description: 'Micro-volume blowdown test case - demonstrates micrometric diameter expectations',
+    category: 'blowdown',
+    inputs: {
+      V: 200,          // 200 mm³
+      V_unit: 'mm3',
+      P1: 1200,        // 1200 kPa
+      P1_unit: 'kPa',
+      P2: 1,           // 1 kPa
+      P2_unit: 'kPa',
+      T: 15,           // 15°C
+      T_unit: 'celsius',
+      L: 2,            // 2 mm
+      L_unit: 'mm',
+      t: 175,          // 175 seconds
+      t_unit: 'second',
+      gasType: 'air',
+      regime: 'isothermal',
+      Cd: 0.62,
+      epsilon: 0.01,
+    },
+    expectedResult: 'D ≈ 10-50 μm (micrometric)',
+    learningPoints: [
+      'Micro-volume (200 mm³) → Very small diameters expected',
+      'High pressure ratio (1200:1) → Strong driving force',
+      'Diameter should be micrometric (1-100 μm)',
+      'Validates dimensional analysis and unit conversion'
+    ]
   }
 ];
 
