@@ -1213,12 +1213,74 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       capillary_error = `Capillary model failed: ${(error as Error).message}`;
     }
     
-    // 2) Compute D_orif via orifice model (robust root finding)
+    // 2) Compute D_orif via orifice model (try isothermal first, then robust root finding)
     let samplingData: SamplingData | undefined;
+    let orifice_isothermal_failed = false;
+    let isothermal_residual_marginal = false;
+    
     try {
-      const result = solveOrificeDfromT(inputs);
-      D_orifice = result.D;
-      samplingData = result.sampling;
+      // Try isothermal solver first if regime is isothermal or default
+      if (inputs.regime !== 'adiabatic') {
+        try {
+          const isothermalResult = solveOrifice_DfromT_isothermal(inputs);
+          D_orifice = isothermalResult.D_SI_m;
+          
+          // Check if flow is choked and monotonic for smart switching decision
+          if (D_orifice) {
+            const testDiag = calculateDiagnostics(inputs, D_orifice);
+            const isChoked = testDiag.choked as boolean;
+            
+            // Sample to check monotonicity
+            try {
+              const sampleResult = sample_tA(inputs, 'orifice', 1e-12, 1e-8, 5);
+              const isMonotonic = sampleResult.samples.length >= 2 && 
+                sampleResult.samples.every((s, i, arr) => i === 0 || s.t_s < arr[i-1].t_s);
+              
+              if (isChoked && isMonotonic) {
+                samplingData = {
+                  samples: sampleResult.samples.map(s => ({
+                    A: s.A_m2,
+                    D_mm: s.D_m * 1000,
+                    t_model: s.t_s
+                  })),
+                  monotonic: isMonotonic,
+                  bracketInfo: {
+                    A_lo: 1e-12,
+                    A_hi: 1e-8,
+                    t_A_lo: sampleResult.samples[0]?.t_s || 0,
+                    t_A_hi: sampleResult.samples[sampleResult.samples.length - 1]?.t_s || 0,
+                    expansions: 0
+                  },
+                  warnings: []
+                };
+              }
+            } catch {}
+          }
+        } catch (error) {
+          if (error instanceof ResidualError) {
+            orifice_isothermal_failed = true;
+            // Check if we should warn but not switch
+            if (D_orifice) {
+              const testDiag = calculateDiagnostics(inputs, D_orifice);
+              const isChoked = testDiag.choked as boolean;
+              
+              if (isChoked) {
+                isothermal_residual_marginal = true;
+                warnings.push("Residual marginal; kept orifice model (isothermal).");
+                // Keep the isothermal result despite residual failure
+                D_orifice = (error as ResidualError).details?.D_SI_m;
+              }
+            }
+          }
+        }
+      }
+      
+      // Fall back to iterative solver only if isothermal completely failed or regime is adiabatic
+      if (!D_orifice || (orifice_isothermal_failed && !isothermal_residual_marginal)) {
+        const result = solveOrificeDfromT(inputs);
+        D_orifice = result.D;
+        samplingData = result.sampling;
+      }
     } catch (error) {
       if (error instanceof BracketError) {
         orifice_error = `Solver could not bracket the solution. Try increasing target time, widening A bounds, or set ε=1% (default).`;
@@ -1265,40 +1327,64 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     if (D_orifice) {
       ori_diagnostics = calculateDiagnostics(inputs, D_orifice);
       ori_valid = true; // Orifice model is more generally applicable
+      
+      // If isothermal residual was marginal but we kept it, note this
+      if (isothermal_residual_marginal) {
+        ori_diagnostics.isothermal_marginal = true;
+      }
     }
     
     if (cap_valid && ori_valid && !capillary_deprioritized) {
-      // Both valid and capillary not de-prioritized - use forward simulation to pick best
-      let cap_residual = Infinity;
-      let ori_residual = Infinity;
+      // Both valid and capillary not de-prioritized
+      // If orifice has isothermal marginal residual, prefer it over capillary unless clear capillary advantage
+      if (isothermal_residual_marginal) {
+        verdict = 'orifice';
+        D = D_orifice;
+        rationale = `Orifice chosen (isothermal with marginal residual but choked flow detected). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+      } else {
+        // Use forward simulation to pick best
+        let cap_residual = Infinity;
+        let ori_residual = Infinity;
+        
+        try {
+          const cap_forward = inputs.process === 'blowdown' 
+            ? orificeTfromD_blowdown({ ...inputs, D: D_capillary })
+            : orificeTfromD_filling({ ...inputs, D: D_capillary });
+          cap_residual = Math.abs((cap_forward - inputs.t!) / inputs.t!);
+        } catch {}
+        
+        try {
+          const ori_forward = inputs.process === 'blowdown'
+            ? orificeTfromD_blowdown({ ...inputs, D: D_orifice })
+            : orificeTfromD_filling({ ...inputs, D: D_orifice });
+          ori_residual = Math.abs((ori_forward - inputs.t!) / inputs.t!);
+        } catch {}
+        
+        if (cap_residual < ori_residual) {
+          verdict = 'capillary';
+          D = D_capillary;
+          rationale = `Both models valid. Capillary chosen (lower residual: ${(cap_residual * 100).toFixed(3)}% vs ${(ori_residual * 100).toFixed(3)}%). Re=${Math.round(cap_diagnostics.Re as number)}, L/D=${Math.round(cap_diagnostics['L/D'] as number)}.`;
+        } else {
+          verdict = 'orifice';
+          D = D_orifice;
+          rationale = `Both models valid. Orifice chosen (lower residual: ${(ori_residual * 100).toFixed(3)}% vs ${(cap_residual * 100).toFixed(3)}%). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+        }
+      }
+    } else if (cap_valid && !ori_valid && !capillary_deprioritized) {
+      // Only switch to capillary if physical assumptions clearly favor it
+      const Re = cap_diagnostics.Re as number;
+      const LoverD = cap_diagnostics['L/D'] as number;
+      const isChoked = ori_diagnostics.choked as boolean;
       
-      try {
-        const cap_forward = inputs.process === 'blowdown' 
-          ? orificeTfromD_blowdown({ ...inputs, D: D_capillary })
-          : orificeTfromD_filling({ ...inputs, D: D_capillary });
-        cap_residual = Math.abs((cap_forward - inputs.t!) / inputs.t!);
-      } catch {}
-      
-      try {
-        const ori_forward = inputs.process === 'blowdown'
-          ? orificeTfromD_blowdown({ ...inputs, D: D_orifice })
-          : orificeTfromD_filling({ ...inputs, D: D_orifice });
-        ori_residual = Math.abs((ori_forward - inputs.t!) / inputs.t!);
-      } catch {}
-      
-      if (cap_residual < ori_residual) {
+      if (!isChoked && Re <= 2000 && LoverD >= 10) {
         verdict = 'capillary';
         D = D_capillary;
-        rationale = `Both models valid. Capillary chosen (lower residual: ${(cap_residual * 100).toFixed(3)}% vs ${(ori_residual * 100).toFixed(3)}%). Re=${Math.round(cap_diagnostics.Re as number)}, L/D=${Math.round(cap_diagnostics['L/D'] as number)}.`;
+        rationale = `Auto-switch to capillary: assumptions favor capillary (non-choked, Re=${Math.round(Re)} ≤ 2000, L/D=${Math.round(LoverD)} ≥ 10).`;
       } else {
         verdict = 'orifice';
         D = D_orifice;
-        rationale = `Both models valid. Orifice chosen (lower residual: ${(ori_residual * 100).toFixed(3)}% vs ${(cap_residual * 100).toFixed(3)}%). ${ori_diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+        rationale = `Kept orifice model despite validity issues. Physical assumptions don't clearly favor capillary switch.`;
       }
-    } else if (cap_valid && !ori_valid && !capillary_deprioritized) {
-      verdict = 'capillary';
-      D = D_capillary;
-      rationale = `Capillary model valid (Re=${Math.round(cap_diagnostics.Re as number)}, L/D=${Math.round(cap_diagnostics['L/D'] as number)}). Orifice model assumptions not met.`;
     } else if ((!cap_valid && ori_valid) || (capillary_deprioritized && ori_valid)) {
       verdict = 'orifice';
       D = D_orifice;
