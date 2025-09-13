@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { ModeSelector, ProcessType, SolveForType } from '@/components/ModeSelector';
 import { InputsCard, InputValues } from '@/components/InputsCard';
@@ -426,8 +426,43 @@ export const Calculator: React.FC = () => {
     setLanguage(nextLanguage);
   };
 
-  const canCalculate = inputValues.V && inputValues.P1 && inputValues.P2 && inputValues.T && inputValues.L &&
-    ((solveFor === 'DfromT' && inputValues.t) || (solveFor === 'TfromD' && inputValues.D));
+  // Mode-aware disabled logic - only block on genuine physics impossibility
+  const disabled = useMemo(() => {
+    if (loading) return true;
+
+    // Basic required fields check
+    if (!inputValues.V || !inputValues.P1 || !inputValues.P2 || !inputValues.T || !inputValues.L) return true;
+    if ((solveFor === 'DfromT' && !inputValues.t) || (solveFor === 'TfromD' && !inputValues.D)) return true;
+
+    // Re-evaluate ABSOLUTE pressures with current mode
+    try {
+      const parse = (s: string) => Number(String(s).replace(/\s/g,"").replace(",","."));
+      const unit = inputValues.P1_unit as PressureUnit;
+      const Patm =
+        inputValues.patmMode === "standard" ? 101325 :
+        inputValues.patmMode === "custom" ? toSI_Pressure(parse(String(inputValues.patmValue?.value ?? "101.325")), inputValues.patmValue?.unit ?? "kPa") :
+        patmFromAltitude(inputValues.altitude_m ?? 0);
+
+      const toAbs = (valStr: string | number, u: PressureUnit) => {
+        const x = toSI_Pressure(parse(String(valStr)), u);
+        return inputValues.pressureInputMode === "gauge" ? absFromGauge(x, Patm) : x;
+      };
+
+      const P1_abs = toAbs(inputValues.P1, unit);
+      const P2_abs = toAbs(inputValues.P2, unit);
+
+      // Only block on genuine physics impossibility:
+      if (!(P1_abs > 1 && P2_abs > 1)) return true;               // need positive absolutes
+      if (process === "blowdown" && !(P1_abs > P2_abs)) return true;
+      if (process === "filling" && inputValues.Ps) {
+        const Ps_abs = toAbs(inputValues.Ps, unit);
+        if (!(Ps_abs > P1_abs && P2_abs > P1_abs)) return true;
+      }
+      return false;
+    } catch { 
+      return true; 
+    }
+  }, [inputValues, process, solveFor, loading]);
 
   return (
     <PWAUpdateManager>
@@ -512,7 +547,7 @@ export const Calculator: React.FC = () => {
             onCalculate={handleCalculate}
             onClear={handleClear}
             loading={loading}
-            disabled={!canCalculate}
+            disabled={disabled}
           />
         </div>
       </div>
