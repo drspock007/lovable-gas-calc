@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { pressureFromSI, pressureToSI, volumeFromSI, volumeToSI, temperatureFromSI, temperatureToSI, lengthFromSI, lengthToSI, timeFromSI, timeToSI } from '@/lib/units';
+import { parseDecimalFlexible, isValidDecimalString, normalizeDecimalString } from '@/lib/decimal-utils';
 
 interface UnitSelectProps {
   type: 'pressure' | 'volume' | 'temperature' | 'length' | 'time';
@@ -19,8 +20,9 @@ const UNIT_OPTIONS = {
   ],
   volume: [
     { value: 'm3', label: 'm³' },
-    { value: 'liter', label: 'L' },
+    { value: 'L', label: 'L' },
     { value: 'ft3', label: 'ft³' },
+    { value: 'mm3', label: 'mm³' },
   ],
   temperature: [
     { value: 'kelvin', label: 'K' },
@@ -69,6 +71,7 @@ interface UnitInputProps {
   required?: boolean;
   step?: string;
   min?: number;
+  error?: string;
 }
 
 export const UnitInput: React.FC<UnitInputProps> = ({
@@ -82,22 +85,88 @@ export const UnitInput: React.FC<UnitInputProps> = ({
   required = false,
   step = "0.001",
   min,
+  error,
 }) => {
+  // Internal string state to prevent truncation during typing
+  const [inputValue, setInputValue] = useState<string>('');
+  const [hasError, setHasError] = useState<boolean>(false);
+  
+  // Initialize input value from prop
+  useEffect(() => {
+    if (value !== undefined && value !== null) {
+      setInputValue(value.toString());
+    }
+  }, [value]);
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+    setInputValue(rawValue);
+    
+    // Validate format but don't parse yet
+    const isValid = isValidDecimalString(rawValue);
+    setHasError(!isValid && rawValue.trim() !== '');
+  };
+  
+  const handleBlur = () => {
+    const normalizedValue = normalizeDecimalString(inputValue);
+    const parsedValue = parseDecimalFlexible(normalizedValue);
+    
+    if (parsedValue !== null) {
+      // Apply min validation if specified
+      if (min !== undefined && parsedValue < min) {
+        setHasError(true);
+        return;
+      }
+      
+      setHasError(false);
+      onChange(parsedValue);
+      // Update display value to normalized format
+      setInputValue(parsedValue.toString());
+    } else if (inputValue.trim() === '') {
+      // Empty input is valid, pass 0 or handle as needed
+      setHasError(false);
+      onChange(0);
+      setInputValue('');
+    } else {
+      // Invalid format
+      setHasError(true);
+    }
+  };
+  
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Allow immediate calculation on Enter
+    if (e.key === 'Enter') {
+      handleBlur();
+    }
+  };
+  
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium text-foreground">{label}</label>
       <div className="flex gap-2">
-        <input
-          type="number"
-          inputMode="decimal"
-          value={value || ''}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          placeholder={placeholder}
-          step={step}
-          min={min}
-          required={required}
-          className="flex-1 touch-target px-3 py-2 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
-        />
+        <div className="flex-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            pattern="^-?\\d*([.,]\\d*)?$"
+            value={inputValue}
+            onChange={handleInputChange}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            required={required}
+            className={`w-full touch-target px-3 py-2 border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-transparent ${
+              hasError || error 
+                ? 'border-destructive focus:ring-destructive' 
+                : 'border-border'
+            }`}
+          />
+          {(hasError || error) && (
+            <p className="text-xs text-destructive mt-1">
+              {error || 'Please enter a valid decimal number'}
+            </p>
+          )}
+        </div>
         <UnitSelect type={type} value={unit} onChange={onUnitChange} />
       </div>
     </div>

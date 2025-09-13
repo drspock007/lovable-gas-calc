@@ -143,6 +143,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
             onUnitChange={(u) => updateValue('V_unit', u)}
             required
             min={0}
+            error={values.V <= 0 ? 'Volume must be greater than 0' : undefined}
           />
           
           <UnitInput
