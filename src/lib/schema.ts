@@ -2,7 +2,7 @@ import { z } from "zod";
 import { toSI_Pressure, absFromGauge, patmFromAltitude } from "@/lib/pressure-units";
 
 const pressureField = z.object({
-  value: z.string().min(1),          // on garde la chaîne brute
+  value: z.string().min(1), // "0" passe (longueur=1)
   unit: z.enum(["Pa","kPa","bar","MPa"])
 });
 
@@ -64,30 +64,27 @@ export const formSchema = z.object({
   const P1_abs = toAbsSI(data.P1.value, data.P1.unit);
   const P2_abs = toAbsSI(data.P2.value, data.P2.unit);
 
-  // Mode gauge : P2_g peut être 0 (atmosphère) et même négatif jusqu'au vide
+  // Gauge : 0 est VALIDE ; on interdit seulement < -Patm (vide)
   if (data.pressureInputMode === "gauge") {
     const P2_g_SI = toSI_Pressure(parse(data.P2.value), data.P2.unit as any);
     if (!Number.isFinite(P2_g_SI)) {
       ctx.addIssue({ code:"custom", path:["P2","value"], message:"Invalid gauge pressure" });
     }
-    // Interdit juste en dessous du vide (≈ -Patm)
     if (P2_g_SI < -Patm_SI + 1) {
       ctx.addIssue({ code:"custom", path:["P2","value"], message:"Gauge below vacuum" });
     }
-    // *** NE PAS exiger > 0 : 0 g est valide ***
   } else {
     if (!(P2_abs > 1)) {
       ctx.addIssue({ code:"custom", path:["P2","value"], message:"Absolute pressure must be > 0" });
     }
   }
 
-  // Gardes physiques sur l'ABSOLU
+  // Gardes physiques (sur ABSOLU)
   if (data.process === "blowdown") {
     if (!(P1_abs > 1 && P2_abs > 1 && P1_abs > P2_abs)) {
       ctx.addIssue({ code:"custom", path:["P1","value"], message:"For blowdown, P1 must exceed P2 (absolute)" });
     }
   } else {
-    // Filling : Ps requis
     if (!data.Ps?.value) {
       ctx.addIssue({ code:"custom", path:["Ps","value"], message:"Supply pressure required in filling mode" });
       return;
