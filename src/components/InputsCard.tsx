@@ -364,20 +364,15 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   onUnitChange={(u) => updateValue('P2_unit', u)}
                   required
                   min={0}
+                  showToAtmosphereButton={process === 'blowdown' && values.pressureInputMode === 'gauge'}
+                  onToAtmosphere={() => {
+                    // Additional callback logic if needed (e.g., analytics, validation trigger)
+                    console.log('P2 set to atmosphere (0 gauge)');
+                  }}
                 />
               </div>
               {values.pressureInputMode === 'gauge' && (
                 <Badge variant="secondary" className="text-xs mt-6 shrink-0">g</Badge>
-              )}
-              {process === 'blowdown' && values.pressureInputMode === 'gauge' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => updateValue('P2', 0)}
-                  className="mt-6 whitespace-nowrap"
-                >
-                  {t('chip.toAtmosphere')}
-                </Button>
               )}
             </div>
             {values.pressureInputMode === 'gauge' && (

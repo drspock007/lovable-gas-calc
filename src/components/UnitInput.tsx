@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { pressureFromSI, pressureToSI, volumeFromSI, volumeToSI, temperatureFromSI, temperatureToSI, lengthFromSI, lengthToSI, timeFromSI, timeToSI } from '@/lib/units';
 import { parseDecimalFlexible, isValidDecimalString, normalizeDecimalString } from '@/lib/decimal-utils';
+import { useI18n } from '@/i18n/context';
 
 interface UnitSelectProps {
   type: 'pressure' | 'volume' | 'temperature' | 'length' | 'time';
@@ -72,6 +74,8 @@ interface UnitInputProps {
   step?: string;
   min?: number;
   error?: string;
+  showToAtmosphereButton?: boolean;
+  onToAtmosphere?: () => void;
 }
 
 export const UnitInput: React.FC<UnitInputProps> = ({
@@ -86,7 +90,10 @@ export const UnitInput: React.FC<UnitInputProps> = ({
   step = "0.001",
   min,
   error,
+  showToAtmosphereButton = false,
+  onToAtmosphere,
 }) => {
+  const { t } = useI18n();
   // Internal string state to prevent truncation during typing
   const [inputValue, setInputValue] = useState<string>('');
   const [hasError, setHasError] = useState<boolean>(false);
@@ -133,6 +140,18 @@ export const UnitInput: React.FC<UnitInputProps> = ({
     }
   };
   
+  const handleToAtmosphere = () => {
+    // Set raw input string to exactly "0"
+    setInputValue('0');
+    setHasError(false);
+    // Trigger onChange with 0
+    onChange(0);
+    // Call parent callback if provided
+    if (onToAtmosphere) {
+      onToAtmosphere();
+    }
+  };
+  
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // Allow immediate calculation on Enter
     if (e.key === 'Enter') {
@@ -169,6 +188,17 @@ export const UnitInput: React.FC<UnitInputProps> = ({
           )}
         </div>
         <UnitSelect type={type} value={unit} onChange={onUnitChange} />
+        {showToAtmosphereButton && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleToAtmosphere}
+            className="whitespace-nowrap self-start"
+            type="button"
+          >
+            {t('chip.toAtmosphere')}
+          </Button>
+        )}
       </div>
     </div>
   );
