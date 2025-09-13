@@ -107,15 +107,11 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
   };
 
   const checkDiameterSanity = (diameter: number, volume: number): boolean => {
-    // Check if diameter is unphysically large
-    if (diameter > 0.5) return false; // Larger than 0.5 m
+    // Sphere-equivalent diameter of the tank: D_eq = (6 * V_SI_m3 / π)^(1/3)
+    const D_eq = Math.pow(6 * volume / Math.PI, 1/3);
     
-    // Check if diameter is large relative to vessel size
-    // Equivalent sphere diameter: D_eq = (6V/π)^(1/3)
-    const equivalentDiameter = Math.pow(6 * volume / Math.PI, 1/3);
-    const halfEquivalentDiameter = 0.5 * equivalentDiameter;
-    
-    return diameter <= halfEquivalentDiameter;
+    // If computed diameter is larger than the tank's equivalent diameter, it's unphysical
+    return diameter <= D_eq;
   };
 
   const getVerdictColor = (verdict: string): string => {
@@ -285,7 +281,7 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
                   Diameter appears unphysically large for the selected volume. Check units (mm³ vs L).
                 </p>
                 <p className="text-xs text-orange-600 dark:text-orange-400">
-                  Computed: {(results.D * 1000).toFixed(2)} mm for {inputs.V} m³ volume
+                  Computed: {(results.D * 1000).toFixed(2)} mm for {(inputs.V * 1e9).toFixed(0)} mm³ volume (D_eq ≈ {(Math.pow(6 * inputs.V / Math.PI, 1/3) * 1000).toFixed(2)} mm)
                 </p>
               </div>
             </div>
