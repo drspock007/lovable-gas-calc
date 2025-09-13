@@ -187,8 +187,6 @@ export const Calculator: React.FC = () => {
       ...(solveFor === 'DfromT' && inputValues.t && { t: timeToSI(inputValues.t, inputValues.t_unit || 'second') }),
     };
   }, [inputValues, process, solveFor, getSelectedGas]);
-    }
-  };
 
   const handleClear = () => {
     setResults(null);
