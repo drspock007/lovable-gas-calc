@@ -288,19 +288,22 @@ export const Calculator: React.FC = () => {
       inputValues.patmMode === 'custom' ? toSI_Pressure(inputValues.patmValue?.value || 101.325, inputValues.patmValue?.unit || 'kPa') :
       patmFromAltitude(inputValues.altitude_m ?? 0);
 
-    // Helper function to convert user input to absolute SI
-    const u = inputValues.P1_unit as PressureUnit;
-    function toAbsSI(v: number): number {
-      const x = toSI_Pressure(v, u);
+    // Helper function to convert individual pressure fields to absolute SI
+    const toAbsSI = (value: number, unit: string) => {
+      const x = toSI_Pressure(value, unit as PressureUnit);
       return inputValues.pressureInputMode === 'gauge' ? absFromGauge(x, Patm_SI) : x;
-    }
+    };
+
+    const P1_abs = toAbsSI(inputValues.P1, inputValues.P1_unit);
+    const P2_abs = toAbsSI(inputValues.P2, inputValues.P2_unit);
+    const Ps_abs = process === "filling" && inputValues.Ps ? toAbsSI(inputValues.Ps, inputValues.Ps_unit) : undefined;
 
     return {
       process,
       solveFor,
       V: volumeToSI(inputValues.V, inputValues.V_unit as any),
-      P1: clampAbs(toAbsSI(inputValues.P1)),
-      P2: clampAbs(toAbsSI(inputValues.P2)),
+      P1: clampAbs(P1_abs),
+      P2: clampAbs(P2_abs),
       T: temperatureToSI(inputValues.T, inputValues.T_unit as any),
       L: lengthToSI(inputValues.L, inputValues.L_unit as any),
       gas: getSelectedGas(),
@@ -308,7 +311,7 @@ export const Calculator: React.FC = () => {
       epsilon: inputValues.epsilon,
       regime: inputValues.regime,
       Patm_SI,
-      ...(process === 'filling' && inputValues.Ps && { Ps: clampAbs(toAbsSI(inputValues.Ps)) }),
+      ...(Ps_abs && { Ps: clampAbs(Ps_abs) }),
       ...(solveFor === 'TfromD' && inputValues.D && { D: lengthToSI(inputValues.D, (inputValues.D_unit || 'mm') as any) }),
       ...(solveFor === 'DfromT' && inputValues.t && { t: timeToSI(inputValues.t, (inputValues.t_unit || 'second') as any) }),
     };
