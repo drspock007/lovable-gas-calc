@@ -1,13 +1,285 @@
 /**
- * Unit conversion utilities for gas transfer calculations
- * All conversions to/from SI base units
+ * Unit conversion utilities for the Gas Transfer Calculator
+ * All conversions are to SI base units
  */
 
-export type PressureUnit = 'Pa' | 'bar' | 'kPa' | 'MPa' | 'psi';
-export type VolumeUnit = 'liter' | 'L' | 'm3' | 'ft3';
-export type TemperatureUnit = 'celsius' | 'kelvin' | 'fahrenheit';
-export type LengthUnit = 'mm' | 'inch' | 'm';
-export type TimeUnit = 'second' | 'minute' | 'hour';
+// ============= VOLUME UNITS =============
+
+export type VolumeUnit = 'm3' | 'L' | 'ft3' | 'mm3';
+
+export const VOLUME_LABEL: Record<VolumeUnit, string> = {
+  m3: 'm³',
+  L: 'L',
+  ft3: 'ft³',
+  mm3: 'mm³',
+};
+
+const VOL_TO_SI: Record<VolumeUnit, number> = {
+  m3: 1,
+  L: 1e-3, // 1 L = 1e-3 m³
+  ft3: 0.028316846592,
+  mm3: 1e-9, // 1 mm³ = 1e-9 m³
+};
+
+export function toSI_Volume(value: number, unit: VolumeUnit): number {
+  return value * VOL_TO_SI[unit];
+}
+
+export function fromSI_Volume(valueSI: number, unit: VolumeUnit): number {
+  return valueSI / VOL_TO_SI[unit];
+}
+
+// ============= PRESSURE UNITS =============
+
+export type PressureUnit = 'Pa' | 'bar' | 'psi' | 'atm' | 'kPa' | 'MPa' | 'torr' | 'mmHg';
+
+export const PRESSURE_LABEL: Record<PressureUnit, string> = {
+  Pa: 'Pa',
+  bar: 'bar',
+  psi: 'psi',
+  atm: 'atm',
+  kPa: 'kPa',
+  MPa: 'MPa',
+  torr: 'Torr',
+  mmHg: 'mmHg',
+};
+
+const PRESSURE_TO_SI: Record<PressureUnit, number> = {
+  Pa: 1,
+  bar: 1e5,
+  psi: 6894.757,
+  atm: 101325,
+  kPa: 1e3,
+  MPa: 1e6,
+  torr: 133.322,
+  mmHg: 133.322,
+};
+
+export function toSI_Pressure(value: number, unit: PressureUnit): number {
+  return value * PRESSURE_TO_SI[unit];
+}
+
+export function fromSI_Pressure(valueSI: number, unit: PressureUnit): number {
+  return valueSI / PRESSURE_TO_SI[unit];
+}
+
+// ============= TEMPERATURE UNITS =============
+
+export type TemperatureUnit = 'K' | 'C' | 'F' | 'R';
+
+export const TEMPERATURE_LABEL: Record<TemperatureUnit, string> = {
+  K: 'K',
+  C: '°C',
+  F: '°F',
+  R: '°R',
+};
+
+export function toSI_Temperature(value: number, unit: TemperatureUnit): number {
+  switch (unit) {
+    case 'K': return value;
+    case 'C': return value + 273.15;
+    case 'F': return (value - 32) * 5/9 + 273.15;
+    case 'R': return value * 5/9;
+    default: return value;
+  }
+}
+
+export function fromSI_Temperature(valueSI: number, unit: TemperatureUnit): number {
+  switch (unit) {
+    case 'K': return valueSI;
+    case 'C': return valueSI - 273.15;
+    case 'F': return (valueSI - 273.15) * 9/5 + 32;
+    case 'R': return valueSI * 9/5;
+    default: return valueSI;
+  }
+}
+
+// ============= LENGTH UNITS =============
+
+export type LengthUnit = 'm' | 'mm' | 'cm' | 'in' | 'ft';
+
+export const LENGTH_LABEL: Record<LengthUnit, string> = {
+  m: 'm',
+  mm: 'mm',
+  cm: 'cm',
+  in: 'in',
+  ft: 'ft',
+};
+
+const LENGTH_TO_SI: Record<LengthUnit, number> = {
+  m: 1,
+  mm: 1e-3,
+  cm: 1e-2,
+  in: 0.0254,
+  ft: 0.3048,
+};
+
+export function toSI_Length(value: number, unit: LengthUnit): number {
+  return value * LENGTH_TO_SI[unit];
+}
+
+export function fromSI_Length(valueSI: number, unit: LengthUnit): number {
+  return valueSI / LENGTH_TO_SI[unit];
+}
+
+// ============= TIME UNITS =============
+
+export type TimeUnit = 's' | 'min' | 'h' | 'ms';
+
+export const TIME_LABEL: Record<TimeUnit, string> = {
+  s: 's',
+  min: 'min',
+  h: 'h',
+  ms: 'ms',
+};
+
+const TIME_TO_SI: Record<TimeUnit, number> = {
+  s: 1,
+  min: 60,
+  h: 3600,
+  ms: 1e-3,
+};
+
+export function toSI_Time(value: number, unit: TimeUnit): number {
+  return value * TIME_TO_SI[unit];
+}
+
+export function fromSI_Time(valueSI: number, unit: TimeUnit): number {
+  return valueSI / TIME_TO_SI[unit];
+}
+
+// ============= LEGACY FUNCTION COMPATIBILITY =============
+
+// Legacy volume functions for backward compatibility
+export function volumeToSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'm3': 1,
+    'liter': 1e-3,
+    'L': 1e-3,
+    'ft3': 0.028316846592,
+    'mm3': 1e-9,
+    'gal': 0.003785411784,
+    'ml': 1e-6,
+  };
+  return value * (conversions[unit] || 1);
+}
+
+export function volumeFromSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'm3': 1,
+    'liter': 1e-3,
+    'L': 1e-3,
+    'ft3': 0.028316846592,
+    'mm3': 1e-9,
+    'gal': 0.003785411784,
+    'ml': 1e-6,
+  };
+  return value / (conversions[unit] || 1);
+}
+
+// Legacy pressure functions for backward compatibility
+export function pressureToSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'Pa': 1,
+    'bar': 1e5,
+    'psi': 6894.757,
+    'atm': 101325,
+    'kPa': 1e3,
+    'MPa': 1e6,
+    'torr': 133.322,
+    'mmHg': 133.322,
+  };
+  return value * (conversions[unit] || 1);
+}
+
+export function pressureFromSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'Pa': 1,
+    'bar': 1e5,
+    'psi': 6894.757,
+    'atm': 101325,
+    'kPa': 1e3,
+    'MPa': 1e6,
+    'torr': 133.322,
+    'mmHg': 133.322,
+  };
+  return value / (conversions[unit] || 1);
+}
+
+// Legacy temperature functions for backward compatibility
+export function temperatureToSI(value: number, unit: string): number {
+  switch (unit) {
+    case 'K': case 'kelvin': return value;
+    case 'C': case 'celsius': return value + 273.15;
+    case 'F': case 'fahrenheit': return (value - 32) * 5/9 + 273.15;
+    case 'R': case 'rankine': return value * 5/9;
+    default: return value;
+  }
+}
+
+export function temperatureFromSI(value: number, unit: string): number {
+  switch (unit) {
+    case 'K': case 'kelvin': return value;
+    case 'C': case 'celsius': return value - 273.15;
+    case 'F': case 'fahrenheit': return (value - 273.15) * 9/5 + 32;
+    case 'R': case 'rankine': return value * 9/5;
+    default: return value;
+  }
+}
+
+// Legacy length functions for backward compatibility
+export function lengthToSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'm': 1,
+    'mm': 1e-3,
+    'cm': 1e-2,
+    'in': 0.0254,
+    'ft': 0.3048,
+  };
+  return value * (conversions[unit] || 1);
+}
+
+export function lengthFromSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    'm': 1,
+    'mm': 1e-3,
+    'cm': 1e-2,
+    'in': 0.0254,
+    'ft': 0.3048,
+  };
+  return value / (conversions[unit] || 1);
+}
+
+// Legacy time functions for backward compatibility
+export function timeToSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    's': 1,
+    'second': 1,
+    'min': 60,
+    'minute': 60,
+    'h': 3600,
+    'hour': 3600,
+    'ms': 1e-3,
+  };
+  return value * (conversions[unit] || 1);
+}
+
+export function timeFromSI(value: number, unit: string): number {
+  const conversions: Record<string, number> = {
+    's': 1,
+    'second': 1,
+    'min': 60,
+    'minute': 60,
+    'h': 3600,
+    'hour': 3600,
+    'ms': 1e-3,
+  };
+  return value / (conversions[unit] || 1);
+}
+
+// ============= UNIT SYSTEM TYPES =============
+
+export type UnitSystemType = 'SI' | 'Imperial' | 'Mixed';
 
 export interface UnitSystem {
   pressure: PressureUnit;
@@ -17,186 +289,29 @@ export interface UnitSystem {
   time: TimeUnit;
 }
 
-// Default unit systems
-export const UNIT_SYSTEMS = {
-  metric: {
-    pressure: 'bar' as PressureUnit,
-    volume: 'liter' as VolumeUnit,
-    temperature: 'celsius' as TemperatureUnit,
-    length: 'mm' as LengthUnit,
-    time: 'second' as TimeUnit,
+export const UNIT_SYSTEMS: Record<UnitSystemType, UnitSystem> = {
+  SI: {
+    pressure: 'Pa',
+    volume: 'm3',
+    temperature: 'K',
+    length: 'm',
+    time: 's',
   },
-  imperial: {
-    pressure: 'psi' as PressureUnit,
-    volume: 'ft3' as VolumeUnit,
-    temperature: 'fahrenheit' as TemperatureUnit,
-    length: 'inch' as LengthUnit,
-    time: 'second' as TimeUnit,
+  Imperial: {
+    pressure: 'psi',
+    volume: 'ft3',
+    temperature: 'F',
+    length: 'ft',
+    time: 's',
   },
-  si: {
-    pressure: 'Pa' as PressureUnit,
-    volume: 'm3' as VolumeUnit,
-    temperature: 'kelvin' as TemperatureUnit,
-    length: 'm' as LengthUnit,
-    time: 'second' as TimeUnit,
+  Mixed: {
+    pressure: 'bar',
+    volume: 'L',
+    temperature: 'C',
+    length: 'mm',
+    time: 's',
   },
 };
-
-/**
- * Convert pressure to Pascal (Pa)
- * @param value Pressure value
- * @param unit Source unit
- * @returns Pressure in Pa
- */
-export function pressureToSI(value: number, unit: PressureUnit): number {
-  switch (unit) {
-    case 'Pa': return value;
-    case 'bar': return value * 100000; // 1 bar = 100,000 Pa
-    case 'kPa': return value * 1000; // 1 kPa = 1,000 Pa
-    case 'MPa': return value * 1000000; // 1 MPa = 1,000,000 Pa
-    case 'psi': return value * 6894.757; // 1 psi = 6,894.757 Pa
-    default: throw new Error(`Unknown pressure unit: ${unit}`);
-  }
-}
-
-/**
- * Convert pressure from Pascal (Pa)
- * @param value Pressure in Pa
- * @param unit Target unit
- * @returns Pressure in target unit
- */
-export function pressureFromSI(value: number, unit: PressureUnit): number {
-  switch (unit) {
-    case 'Pa': return value;
-    case 'bar': return value / 100000;
-    case 'kPa': return value / 1000;
-    case 'MPa': return value / 1000000;
-    case 'psi': return value / 6894.757;
-    default: throw new Error(`Unknown pressure unit: ${unit}`);
-  }
-}
-
-/**
- * Convert volume to cubic meters (m³)
- * @param value Volume value
- * @param unit Source unit
- * @returns Volume in m³
- */
-export function volumeToSI(value: number, unit: VolumeUnit): number {
-  switch (unit) {
-    case 'm3': return value;
-    case 'liter':
-    case 'L': return value / 1000; // 1 L = 0.001 m³
-    case 'ft3': return value * 0.0283168; // 1 ft³ = 0.0283168 m³
-    default: throw new Error(`Unknown volume unit: ${unit}`);
-  }
-}
-
-/**
- * Convert volume from cubic meters (m³)
- * @param value Volume in m³
- * @param unit Target unit
- * @returns Volume in target unit
- */
-export function volumeFromSI(value: number, unit: VolumeUnit): number {
-  switch (unit) {
-    case 'm3': return value;
-    case 'liter':
-    case 'L': return value * 1000;
-    case 'ft3': return value / 0.0283168;
-    default: throw new Error(`Unknown volume unit: ${unit}`);
-  }
-}
-
-/**
- * Convert temperature to Kelvin (K)
- * @param value Temperature value
- * @param unit Source unit
- * @returns Temperature in K
- */
-export function temperatureToSI(value: number, unit: TemperatureUnit): number {
-  switch (unit) {
-    case 'kelvin': return value;
-    case 'celsius': return value + 273.15; // °C to K
-    case 'fahrenheit': return (value - 32) * 5/9 + 273.15; // °F to K
-    default: throw new Error(`Unknown temperature unit: ${unit}`);
-  }
-}
-
-/**
- * Convert temperature from Kelvin (K)
- * @param value Temperature in K
- * @param unit Target unit
- * @returns Temperature in target unit
- */
-export function temperatureFromSI(value: number, unit: TemperatureUnit): number {
-  switch (unit) {
-    case 'kelvin': return value;
-    case 'celsius': return value - 273.15; // K to °C
-    case 'fahrenheit': return (value - 273.15) * 9/5 + 32; // K to °F
-    default: throw new Error(`Unknown temperature unit: ${unit}`);
-  }
-}
-
-/**
- * Convert length to meters (m)
- * @param value Length value
- * @param unit Source unit
- * @returns Length in m
- */
-export function lengthToSI(value: number, unit: LengthUnit): number {
-  switch (unit) {
-    case 'm': return value;
-    case 'mm': return value / 1000; // 1 mm = 0.001 m
-    case 'inch': return value * 0.0254; // 1 inch = 0.0254 m
-    default: throw new Error(`Unknown length unit: ${unit}`);
-  }
-}
-
-/**
- * Convert length from meters (m)
- * @param value Length in m
- * @param unit Target unit
- * @returns Length in target unit
- */
-export function lengthFromSI(value: number, unit: LengthUnit): number {
-  switch (unit) {
-    case 'm': return value;
-    case 'mm': return value * 1000;
-    case 'inch': return value / 0.0254;
-    default: throw new Error(`Unknown length unit: ${unit}`);
-  }
-}
-
-/**
- * Convert time to seconds (s)
- * @param value Time value
- * @param unit Source unit
- * @returns Time in s
- */
-export function timeToSI(value: number, unit: TimeUnit): number {
-  switch (unit) {
-    case 'second': return value;
-    case 'minute': return value * 60; // 1 min = 60 s
-    case 'hour': return value * 3600; // 1 h = 3600 s
-    default: throw new Error(`Unknown time unit: ${unit}`);
-  }
-}
-
-/**
- * Convert time from seconds (s)
- * @param value Time in s
- * @param unit Target unit
- * @returns Time in target unit
- */
-export function timeFromSI(value: number, unit: TimeUnit): number {
-  switch (unit) {
-    case 'second': return value;
-    case 'minute': return value / 60;
-    case 'hour': return value / 3600;
-    default: throw new Error(`Unknown time unit: ${unit}`);
-  }
-}
 
 // Legacy converters for backward compatibility
 export const convertToSI = {
@@ -226,8 +341,8 @@ export const loadUnitPreferences = (): UnitSystem => {
     try {
       return JSON.parse(stored);
     } catch {
-      return UNIT_SYSTEMS.metric;
+      return UNIT_SYSTEMS.Mixed;
     }
   }
-  return UNIT_SYSTEMS.metric;
+  return UNIT_SYSTEMS.Mixed;
 };
