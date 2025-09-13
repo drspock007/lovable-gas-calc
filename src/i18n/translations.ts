@@ -68,6 +68,28 @@ export const translations = {
       specificGasConstant: 'R = 8.314 / M. Calculé automatiquement.',
       heatCapacityRatio: 'γ = Cp/Cv. Monoatomique ≈1.67, diatomique ≈1.4, polyatomique ≈1.3.',
       dynamicViscosity: 'Viscosité à la température de service. Affecte les pertes en capillaire.',
+      gauge: 'Pression relative : P_abs = P_g + P_atm.',
+      altitude: 'P_atm estimée (ISA ≤11 km) : P=101325·(1−2.25577e−5·h)^5.25588',
+    },
+    
+    // Pressure Mode
+    pressureMode: {
+      title: 'Mode de pression',
+      gauge: 'Jauge (relative)',
+      absolute: 'Absolue (totale)',
+      atmRef: 'Référence atmosphérique',
+    },
+    
+    // Atmospheric Reference
+    atm: {
+      standard: 'Standard',
+      custom: 'Personnalisé',
+      altitude: 'Altitude',
+    },
+    
+    // Chips
+    chip: {
+      toAtmosphere: 'vers l\'atmosphère',
     },
     
     // Actions
@@ -194,6 +216,28 @@ export const translations = {
       specificGasConstant: 'R = 8.314 / M. Calculated automatically.',
       heatCapacityRatio: 'γ = Cp/Cv. Monatomic ≈1.67, diatomic ≈1.4, polyatomic ≈1.3.',
       dynamicViscosity: 'Viscosity at operating temperature. Affects capillary losses.',
+      gauge: 'Gauge pressure: P_abs = P_g + P_atm.',
+      altitude: 'P_atm estimated (ISA ≤11 km): P=101325·(1−2.25577e−5·h)^5.25588',
+    },
+    
+    // Pressure Mode
+    pressureMode: {
+      title: 'Pressure Input Mode',
+      gauge: 'Gauge (relative)',
+      absolute: 'Absolute (total)',
+      atmRef: 'Atmospheric Reference',
+    },
+    
+    // Atmospheric Reference
+    atm: {
+      standard: 'Standard',
+      custom: 'Custom',
+      altitude: 'Altitude',
+    },
+    
+    // Chips
+    chip: {
+      toAtmosphere: 'to atmosphere',
     },
     
     // Actions
@@ -320,6 +364,28 @@ export const translations = {
       specificGasConstant: 'R = 8.314 / M. Calcolato automaticamente.',
       heatCapacityRatio: 'γ = Cp/Cv. Monoatomico ≈1.67, diatomico ≈1.4, poliatomico ≈1.3.',
       dynamicViscosity: 'Viscosità alla temperatura operativa. Influenza perdite capillari.',
+      gauge: 'Pressione relativa: P_abs = P_g + P_atm.',
+      altitude: 'P_atm stimata (ISA ≤11 km): P=101325·(1−2.25577e−5·h)^5.25588',
+    },
+    
+    // Pressure Mode
+    pressureMode: {
+      title: 'Modalità Pressione',
+      gauge: 'Relativa (manometrica)',
+      absolute: 'Assoluta (totale)',
+      atmRef: 'Riferimento Atmosferico',
+    },
+    
+    // Atmospheric Reference
+    atm: {
+      standard: 'Standard',
+      custom: 'Personalizzato',
+      altitude: 'Altitudine',
+    },
+    
+    // Chips
+    chip: {
+      toAtmosphere: 'all\'atmosfera',
     },
     
     // Actions

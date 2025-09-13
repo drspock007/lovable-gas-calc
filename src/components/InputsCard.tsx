@@ -199,7 +199,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
         {/* Pressure Input Mode */}
         <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/10">
           <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground">Pressure Input Mode</label>
+            <label className="text-sm font-medium text-foreground">{t('pressureMode.title')}</label>
             <div className="flex gap-6">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -210,7 +210,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   onChange={(e) => updateValue('pressureInputMode', e.target.value)}
                   className="text-primary focus:ring-primary"
                 />
-                <span className="text-sm">Gauge (relative)</span>
+                <span className="text-sm" title={t('tooltips.gauge')}>{t('pressureMode.gauge')}</span>
               </label>
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -221,7 +221,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   onChange={(e) => updateValue('pressureInputMode', e.target.value)}
                   className="text-primary focus:ring-primary"
                 />
-                <span className="text-sm">Absolute (total)</span>
+                <span className="text-sm">{t('pressureMode.absolute')}</span>
               </label>
             </div>
           </div>
@@ -229,7 +229,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
           {/* Atmospheric Reference - only shown for gauge mode */}
           {values.pressureInputMode === 'gauge' && (
             <div className="space-y-3 pl-4 border-l-2 border-primary/20">
-              <label className="text-sm font-medium text-foreground">Atmospheric Reference</label>
+              <label className="text-sm font-medium text-foreground">{t('pressureMode.atmRef')}</label>
               <Select 
                 value={values.patmMode} 
                 onValueChange={(v: 'standard' | 'custom' | 'altitude') => updateValue('patmMode', v)}
@@ -238,9 +238,9 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border shadow-elevated z-40">
-                  <SelectItem value="standard" className="hover:bg-accent">Standard</SelectItem>
-                  <SelectItem value="custom" className="hover:bg-accent">Custom</SelectItem>
-                  <SelectItem value="altitude" className="hover:bg-accent">Altitude</SelectItem>
+                  <SelectItem value="standard" className="hover:bg-accent">{t('atm.standard')}</SelectItem>
+                  <SelectItem value="custom" className="hover:bg-accent">{t('atm.custom')}</SelectItem>
+                  <SelectItem value="altitude" className="hover:bg-accent">{t('atm.altitude')}</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -266,7 +266,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
               {values.patmMode === 'altitude' && (
                 <div className="space-y-2">
                   <UnitInput
-                    label="Altitude"
+                    label={t('atm.altitude')}
                     type="length"
                     value={values.altitude_m || 0}
                     unit="m"
@@ -275,7 +275,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                     required
                     min={0}
                   />
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground" title={t('tooltips.altitude')}>
                     P<sub>atm</sub> = {(patmFromAltitude(values.altitude_m || 0) / 1000).toFixed(3)} kPa
                   </div>
                 </div>
@@ -330,7 +330,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   onClick={() => updateValue('P2', 0)}
                   className="mt-6 whitespace-nowrap"
                 >
-                  to atmosphere
+                  {t('chip.toAtmosphere')}
                 </Button>
               )}
             </div>
