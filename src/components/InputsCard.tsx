@@ -363,7 +363,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   onChange={(v) => updateValue('P2', v)}
                   onUnitChange={(u) => updateValue('P2_unit', u)}
                   required
-                  min={0}
+                  // No min restriction for gauge mode (0 gauge = atmosphere is valid)
                   showToAtmosphereButton={process === 'blowdown' && values.pressureInputMode === 'gauge'}
                   onToAtmosphere={() => {
                     // Additional callback logic if needed (e.g., analytics, validation trigger)

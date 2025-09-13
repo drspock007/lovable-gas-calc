@@ -119,8 +119,8 @@ export const UnitInput: React.FC<UnitInputProps> = ({
     const parsedValue = parseDecimalFlexible(normalizedValue);
     
     if (parsedValue !== null) {
-      // Apply min validation if specified
-      if (min !== undefined && parsedValue < min) {
+      // Apply min validation if specified (but allow negative values for gauge pressure)
+      if (min !== undefined && type !== 'pressure' && parsedValue < min) {
         setHasError(true);
         return;
       }
