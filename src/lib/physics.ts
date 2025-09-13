@@ -678,8 +678,30 @@ function solveOrifice_DfromT_isothermal(inputs: ComputeInputs): SolverResultSI {
   // t = (V/(R T Cd A)) * I  =>  A = (V/(R T Cd t)) * I
   const A = (V/(R*T*Cd*t_target)) * I;
   const D = Math.sqrt(4*A/Math.PI);
-  const t_check = timeOrificeFromAreaSI(inputs, A); // reuse exact same integrator
-  return { model:'orifice', A_SI_m2:A, D_SI_m:D, t_SI_s:t_check, diag:{I_total:I}, warnings:[] };
+  
+  // Forward check using SAME path: isothermal orifice with SAME ε, SAME P_f = P2*(1+ε)
+  const t_check = timeOrificeFromAreaSI(inputs, A);
+  
+  // Residual analysis
+  const relativeError = Math.abs(t_check - t_target) / t_target;
+  const warnings: string[] = [];
+  
+  if (relativeError <= 0.01) {
+    // Accept - good residual
+    return { model:'orifice', A_SI_m2:A, D_SI_m:D, t_SI_s:t_check, diag:{I_total:I}, warnings };
+  } else if (relativeError <= 0.03) {
+    // Warning but don't reject
+    warnings.push(`Isothermal residual ${(relativeError*100).toFixed(1)}% > 1% (acceptable < 3%)`);
+    return { model:'orifice', A_SI_m2:A, D_SI_m:D, t_SI_s:t_check, diag:{I_total:I}, warnings };
+  } else {
+    // Reject - too large residual, but keep computed D in dev panel
+    throw new ResidualError(
+      `Isothermal residual ${(relativeError*100).toFixed(1)}% > 3% threshold`,
+      t_check,
+      t_target,
+      { D_SI_m: D, I_total: I, relativeError }
+    );
+  }
 }
 
 // ============= ROBUST ROOT FINDING FOR D FROM T =============
