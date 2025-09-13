@@ -88,40 +88,36 @@ export const Calculator: React.FC = () => {
     setError('');
 
     try {
-      // Get user pressure unit (assume all pressure inputs use same unit for now)
-      const u = inputValues.P1_unit as PressureUnit;
-      
+      // Parse helper (handle string inputs with comma as decimal)
+      const parseFlexible = (s: unknown): number => {
+        if (typeof s !== "string") return NaN;
+        const t = s.replace(/\s/g, "").replace(",", ".");
+        const n = Number(t);
+        return Number.isFinite(n) ? n : NaN;
+      };
+
       // Calculate atmospheric pressure in SI
       const Patm_SI = 
-        inputValues.patmMode === 'standard' ? 101325 :
-        inputValues.patmMode === 'custom' ? toSI_Pressure(inputValues.patmValue?.value || 101.325, inputValues.patmValue?.unit || 'kPa') :
-        patmFromAltitude(inputValues.altitude_m ?? 0);
+        inputValues.patmMode === 'standard' ? 101_325 :
+        inputValues.patmMode === 'custom' ? toSI_Pressure(parseFlexible(inputValues.patmValue?.value ?? "101.325"), (inputValues.patmValue?.unit ?? "kPa") as any) :
+        patmFromAltitude(parseFlexible(inputValues.altitude_m ?? "0"));
 
-      // Helper function to convert user input to absolute SI
-      function toAbsSI(v: number): number {
-        const x = toSI_Pressure(v, u);
-        return inputValues.pressureInputMode === 'gauge' ? absFromGauge(x, Patm_SI) : x;
-      }
+      // Helper to convert UI pressure values to absolute SI
+      const toAbsSI = (val: number, unit: string): number => {
+        const v = toSI_Pressure(val, unit as any);
+        if (!Number.isFinite(v)) return NaN;
+        return inputValues.pressureInputMode === 'gauge' ? absFromGauge(v, Patm_SI) : v;
+      };
 
-      // Validation guards for gauge mode
-      if (inputValues.pressureInputMode === 'gauge') {
-        const minGaugeAllowed = -Patm_SI + 200; // Allow slight margin above perfect vacuum
-        
-        if (inputValues.P1 < minGaugeAllowed / toSI_Pressure(1, u)) {
-          throw new Error('P1 gauge pressure below vacuum limit');
-        }
-        if (inputValues.P2 < minGaugeAllowed / toSI_Pressure(1, u)) {
-          throw new Error('P2 gauge pressure below vacuum limit');
-        }
-        if (process === 'filling' && inputValues.Ps && inputValues.Ps < minGaugeAllowed / toSI_Pressure(1, u)) {
-          throw new Error('Ps gauge pressure below vacuum limit');
-        }
-      }
+      // Convert pressure inputs to absolute SI
+      const P1_abs = toAbsSI(inputValues.P1, inputValues.P1_unit);
+      const P2_abs = toAbsSI(inputValues.P2, inputValues.P2_unit);
+      const Ps_abs = process === "filling" && inputValues.Ps
+        ? toAbsSI(inputValues.Ps, inputValues.Ps_unit)
+        : undefined;
 
-      // Convert all inputs to SI units
+      // Convert other inputs to SI units
       const V_SI = volumeToSI(inputValues.V, inputValues.V_unit as any);
-      const P1_SI = clampAbs(toAbsSI(inputValues.P1));
-      const P2_SI = clampAbs(toAbsSI(inputValues.P2));
       const T_SI = temperatureToSI(inputValues.T, inputValues.T_unit as any);
       const L_SI = lengthToSI(inputValues.L, inputValues.L_unit as any);
       
@@ -130,25 +126,25 @@ export const Calculator: React.FC = () => {
         ? GASES[inputValues.gasType]
         : inputValues.customGas || GASES.air;
 
-      // Build calculation inputs
+      // Build calculation inputs with absolute pressures
       const calculationInputs: ComputeInputs = {
         process,
         solveFor,
         V: V_SI,
-        P1: P1_SI,
-        P2: P2_SI,
+        P1: clampAbs(P1_abs),
+        P2: clampAbs(P2_abs),
         T: T_SI,
         L: L_SI,
         gas,
         Cd: inputValues.Cd,
         epsilon: inputValues.epsilon,
         regime: inputValues.regime,
-        Patm_SI, // Add atmospheric pressure to diagnostics
+        Patm_SI,
       };
 
       // Add process-specific inputs
-      if (process === 'filling' && inputValues.Ps) {
-        calculationInputs.Ps = clampAbs(toAbsSI(inputValues.Ps));
+      if (process === 'filling' && Ps_abs !== undefined) {
+        calculationInputs.Ps = clampAbs(Ps_abs);
       }
 
       // Add solve-specific inputs
@@ -190,29 +186,29 @@ export const Calculator: React.FC = () => {
         console.info('[SI ECHO]', JSON.stringify(siEchoObject));
       }
 
-      // Validate inputs
-      if (P1_SI <= 0 || P2_SI <= 0) {
+      // Validate inputs - pressures are already converted to absolute SI
+      if (!(calculationInputs.P1 > 1) || !(calculationInputs.P2 > 1)) {
         throw new Error('Pressures must be positive (absolute pressures)');
       }
 
-      if (process === 'blowdown' && P1_SI <= P2_SI) {
-        throw new Error(`Initial pressure must be greater than final pressure for blowdown (P1=${(P1_SI/1000).toFixed(1)} kPa ≤ P2=${(P2_SI/1000).toFixed(1)} kPa)`);
+      if (process === 'blowdown' && !(calculationInputs.P1 > calculationInputs.P2)) {
+        throw new Error(`Initial pressure must be greater than final pressure for blowdown (P1=${(calculationInputs.P1/1000).toFixed(1)} kPa ≤ P2=${(calculationInputs.P2/1000).toFixed(1)} kPa)`);
       }
 
-      if (process === 'filling' && inputValues.Ps && calculationInputs.Ps) {
-        if (P1_SI >= P2_SI) {
-          throw new Error(`Target pressure must be greater than initial pressure for filling (P2=${(P2_SI/1000).toFixed(1)} kPa ≤ P1=${(P1_SI/1000).toFixed(1)} kPa)`);
+      if (process === 'filling' && calculationInputs.Ps) {
+        if (!(calculationInputs.P2 > calculationInputs.P1)) {
+          throw new Error(`Target pressure must be greater than initial pressure for filling (P2=${(calculationInputs.P2/1000).toFixed(1)} kPa ≤ P1=${(calculationInputs.P1/1000).toFixed(1)} kPa)`);
         }
-        if (calculationInputs.Ps <= P2_SI) {
-          throw new Error(`Supply pressure must be greater than target pressure for filling (Ps=${(calculationInputs.Ps/1000).toFixed(1)} kPa ≤ P2=${(P2_SI/1000).toFixed(1)} kPa)`);
+        if (!(calculationInputs.Ps > calculationInputs.P2)) {
+          throw new Error(`Supply pressure must be greater than target pressure for filling (Ps=${(calculationInputs.Ps/1000).toFixed(1)} kPa ≤ P2=${(calculationInputs.P2/1000).toFixed(1)} kPa)`);
         }
       }
 
-      if (T_SI <= 0) {
+      if (!(T_SI > 0)) {
         throw new Error('Temperature must be above absolute zero');
       }
 
-      if (V_SI <= 0 || L_SI <= 0) {
+      if (!(V_SI > 0) || !(L_SI > 0)) {
         throw new Error('Volume and length must be positive');
       }
 
