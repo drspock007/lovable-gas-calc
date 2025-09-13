@@ -126,7 +126,7 @@ export const GASES: Record<string, GasProps> = {
  * @param gamma Heat capacity ratio [-]
  * @returns Critical pressure ratio r* [-]
  */
-function criticalPressureRatio(gamma: number): number {
+export function criticalPressureRatio(gamma: number): number {
   return Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
 }
 
