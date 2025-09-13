@@ -1,14 +1,15 @@
 {
   "name": "Gas Transfer Calculator",
   "short_name": "GasCalc",
-  "description": "Professional mobile-first gas transfer calculator for orifice diameter and time calculations",
-  "start_url": "/",
+  "description": "Professional engineering tool for capillary and orifice flow calculations in rigid vessels",
+  "start_url": "/?source=pwa",
   "display": "standalone",
-  "background_color": "#f1f5f9",
+  "orientation": "portrait",
   "theme_color": "#2563eb",
-  "orientation": "portrait-primary",
-  "categories": ["productivity", "utilities", "engineering"],
-  "lang": "en",
+  "background_color": "#ffffff",
+  "categories": ["engineering", "utilities", "productivity"],
+  "lang": "fr",
+  "scope": "/",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -25,10 +26,37 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshot-mobile.png",
-      "sizes": "390x844",
+      "src": "/icon-512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow"
+    }
+  ],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Blowdown Calculator",
+      "short_name": "Blowdown",
+      "description": "Calculate vessel blowdown parameters",
+      "url": "/?preset=blowdown&source=shortcut",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Filling Calculator", 
+      "short_name": "Filling",
+      "description": "Calculate vessel filling parameters",
+      "url": "/?preset=filling&source=shortcut",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
