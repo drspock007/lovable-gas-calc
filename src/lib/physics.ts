@@ -125,6 +125,19 @@ export class ResidualError extends Error {
 }
 
 /**
+ * Solver results with explicit SI units
+ */
+export type SolverResultSI = {
+  model: 'capillary' | 'orifice';
+  A_SI_m2?: number; // or undefined if solving t
+  D_SI_m?: number; // sqrt(4A/pi)
+  t_SI_s?: number; // time from forward simulation check
+  I_total?: number; // integral constant used (dimensionless)
+  diag: Record<string, number | string | boolean>;
+  warnings: string[];
+};
+
+/**
  * Computation results
  */
 export interface ComputeOutputs {
@@ -142,6 +155,8 @@ export interface ComputeOutputs {
   error?: ComputationError;
   /** Sampling data for debug display */
   sampling?: SamplingData;
+  /** Explicit SI results */
+  solverResultSI?: SolverResultSI;
 }
 
 /**
@@ -1295,12 +1310,26 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     
     const modelWarnings = generateWarnings(diagnostics, inputs);
     
+    // Create explicit SI solver result
+    const A_SI_m2 = D ? Math.PI * Math.pow(D, 2) / 4 : undefined;
+    const t_SI_s = typeof diagnostics.t_check === 'number' ? diagnostics.t_check : undefined;
+    
+    const solverResultSI: SolverResultSI = {
+      model: verdict === 'capillary' ? 'capillary' : 'orifice',
+      A_SI_m2,
+      D_SI_m: D,
+      t_SI_s,
+      diag: { ...diagnostics },
+      warnings: [...warnings, ...modelWarnings]
+    };
+    
     return {
       D,
       verdict,
       diagnostics,
       warnings: [...warnings, ...modelWarnings],
       sampling: samplingData,
+      solverResultSI,
     };
     
   } catch (error) {
@@ -1528,11 +1557,25 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
     
     const modelWarnings = generateWarnings(diagnostics, inputs);
     
+    // Create explicit SI solver result
+    const A_SI_m2 = typeof diagnostics.D_check === 'number' ? Math.PI * Math.pow(diagnostics.D_check as number, 2) / 4 : undefined;
+    const D_SI_m = typeof diagnostics.D_check === 'number' ? diagnostics.D_check as number : undefined;
+    
+    const solverResultSI: SolverResultSI = {
+      model: verdict === 'capillary' ? 'capillary' : 'orifice',
+      A_SI_m2,
+      D_SI_m,
+      t_SI_s: t,
+      diag: { ...diagnostics },
+      warnings: [...warnings, ...modelWarnings]
+    };
+    
     return {
       t,
       verdict,
       diagnostics,
       warnings: [...warnings, ...modelWarnings],
+      solverResultSI,
     };
     
   } catch (error) {
