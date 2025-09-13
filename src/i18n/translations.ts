@@ -35,6 +35,7 @@ export const translations = {
     // Advanced Options
     advancedOptions: 'Options avancées',
     convergenceTolerance: 'Tolérance de convergence (ε)',
+    epsilonNote: 'Nous arrêtons à Pf = P₂·(1±ε) pour éviter la singularité (1% par défaut).',
     regime: 'Régime thermodynamique',
     isothermal: 'Isotherme',
     adiabatic: 'Adiabatique',
@@ -160,6 +161,7 @@ export const translations = {
     // Advanced Options
     advancedOptions: 'Advanced Options',
     convergenceTolerance: 'Convergence Tolerance (ε)',
+    epsilonNote: 'We stop at Pf = P₂·(1±ε) to avoid the endpoint singularity (1% default).',
     regime: 'Thermodynamic Regime',
     isothermal: 'Isothermal',
     adiabatic: 'Adiabatic',
@@ -285,6 +287,7 @@ export const translations = {
     // Advanced Options
     advancedOptions: 'Opzioni avanzate',
     convergenceTolerance: 'Tolleranza convergenza (ε)',
+    epsilonNote: 'Ci fermiamo a Pf = P₂·(1±ε) per evitare la singolarità (1% predefinito).',
     regime: 'Regime termodinamico',
     isothermal: 'Isotermico',
     adiabatic: 'Adiabatico',

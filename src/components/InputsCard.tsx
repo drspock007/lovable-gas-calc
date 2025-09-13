@@ -254,7 +254,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
           <CollapsibleContent className="space-y-4 pt-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Convergence Tolerance (ε)</label>
+                <label className="text-sm font-medium text-foreground">{t('convergenceTolerance')}</label>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -267,7 +267,7 @@ export const InputsCard: React.FC<InputsCardProps> = ({
                   className="w-full touch-target px-3 py-2 border border-border rounded-md bg-background text-foreground"
                 />
                 <p className="text-xs text-muted-foreground">
-                  We stop at P_f = P_2·(1{process === 'blowdown' ? '+' : '−'}ε) to avoid the endpoint singularity.
+                  {t('epsilonNote')}
                 </p>
                 <p className="text-xs text-blue-600">
                   Default: 0.01 (1%). Increase to 1-2% if integration becomes too stiff.
