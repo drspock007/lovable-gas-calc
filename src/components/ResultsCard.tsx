@@ -106,6 +106,18 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
     return value.toFixed(decimals);
   };
 
+  const checkDiameterSanity = (diameter: number, volume: number): boolean => {
+    // Check if diameter is unphysically large
+    if (diameter > 0.5) return false; // Larger than 0.5 m
+    
+    // Check if diameter is large relative to vessel size
+    // Equivalent sphere diameter: D_eq = (6V/π)^(1/3)
+    const equivalentDiameter = Math.pow(6 * volume / Math.PI, 1/3);
+    const halfEquivalentDiameter = 0.5 * equivalentDiameter;
+    
+    return diameter <= halfEquivalentDiameter;
+  };
+
   const getVerdictColor = (verdict: string): string => {
     switch (verdict) {
       case 'capillary': return 'text-blue-600';
@@ -256,6 +268,26 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
             )}
           </div>
         </div>
+
+        {/* Diameter Sanity Check Banner */}
+        {results.D && inputs?.V && !checkDiameterSanity(results.D, inputs.V) && (
+          <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                  Unphysically Large Diameter
+                </p>
+                <p className="text-sm text-orange-700 dark:text-orange-300">
+                  Diameter appears unphysically large for the selected volume. Check units (mm³ vs L).
+                </p>
+                <p className="text-xs text-orange-600 dark:text-orange-400">
+                  Computed: {(results.D * 1000).toFixed(2)} mm for {inputs.V} m³ volume
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Smart De-prioritization Warning Banner */}
         {results.warnings.some(w => w.includes('de-prioritized')) && (
