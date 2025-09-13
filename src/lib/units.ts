@@ -14,6 +14,8 @@ export const VOLUME_LABEL: Record<VolumeUnit, string> = {
   mm3: 'mm³',
 };
 
+export const VOLUME_UNITS: VolumeUnit[] = ['mm3', 'L', 'm3', 'ft3'];
+
 const VOL_TO_SI: Record<VolumeUnit, number> = {
   m3: 1,
   L: 1e-3, // 1 L = 1e-3 m³
