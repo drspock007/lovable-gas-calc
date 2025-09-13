@@ -427,6 +427,8 @@ export const Calculator: React.FC = () => {
                 inputs={lastComputeInputs}
                 error={error}
                 onRetry={handleRetry}
+                debugMode={debugMode}
+                userLengthUnit="mm"
               />
             </div>
 

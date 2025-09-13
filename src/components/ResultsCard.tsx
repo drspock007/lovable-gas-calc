@@ -9,6 +9,7 @@ import { useI18n } from '@/i18n/context';
 import { ComputeOutputs, ComputeInputs, BracketError, IntegralError, ResidualError } from '@/lib/physics';
 import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
+import { formatLength, LengthUnit, LENGTH_LABEL } from '@/lib/length-units';
 
 interface ResultsCardProps {
   results: ComputeOutputs | null;
@@ -16,6 +17,8 @@ interface ResultsCardProps {
   inputs?: ComputeInputs;
   error?: string;
   onRetry?: () => void;
+  debugMode?: boolean;
+  userLengthUnit?: LengthUnit;
 }
 
 export const ResultsCard: React.FC<ResultsCardProps> = ({
@@ -24,6 +27,8 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
   inputs,
   error,
   onRetry,
+  debugMode = false,
+  userLengthUnit = 'mm',
 }) => {
   const { t, language } = useI18n();
   const { toast } = useToast();
@@ -106,12 +111,12 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
     return value.toFixed(decimals);
   };
 
-  const checkDiameterSanity = (diameter: number, volume: number): boolean => {
+  const checkDiameterSanity = (D_SI_m: number, volume: number): boolean => {
     // Sphere-equivalent diameter of the tank: D_eq = (6 * V_SI_m3 / π)^(1/3)
     const D_eq = Math.pow(6 * volume / Math.PI, 1/3);
     
     // If computed diameter is larger than the tank's equivalent diameter, it's unphysical
-    return diameter <= D_eq;
+    return D_SI_m <= D_eq;
   };
 
   const getVerdictColor = (verdict: string): string => {
@@ -135,16 +140,24 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
   const formatResultText = (): string => {
     if (!results) return '';
     
+    const D_SI_m = results.solverResultSI?.D_SI_m;
+    const t_SI_s = results.solverResultSI?.t_SI_s;
+    
     const lines = [
       `Gas Transfer Calculation Results`,
       `Model: ${results.verdict}`,
-      results.D ? `Diameter: ${(results.D * 1000).toFixed(2)} mm` : '',
-      results.t ? `Time: ${results.t.toFixed(1)} s` : '',
+      D_SI_m ? `Diameter: ${formatLength(D_SI_m, userLengthUnit)} ${LENGTH_LABEL[userLengthUnit]}` : '',
+      t_SI_s ? `Time: ${t_SI_s.toFixed(1)} s` : '',
       results.diagnostics.rationale ? `Rationale: ${results.diagnostics.rationale}` : '',
     ].filter(Boolean);
     
     return lines.join('\n');
   };
+
+  // Get SI values from solver result
+  const D_SI_m = results?.solverResultSI?.D_SI_m;
+  const t_SI_s = results?.solverResultSI?.t_SI_s;
+  const A_SI_m2 = results?.solverResultSI?.A_SI_m2;
 
   // Handle computation errors with specific messaging
   if (results?.error) {
@@ -255,21 +268,28 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
             </Button>
           </div>
           <div className="space-y-2">
-            {results.D && (
+            {D_SI_m && (
               <p className="text-2xl font-bold gradient-text">
-                {t('orificeDiameter')}: {(results.D * 1000).toFixed(2)} mm
+                {t('orificeDiameter')}: {formatLength(D_SI_m, userLengthUnit)} {LENGTH_LABEL[userLengthUnit]}
               </p>
             )}
-            {results.t && (
+            {t_SI_s && (
               <p className="text-2xl font-bold gradient-text">
-                {t('transferTime')}: {results.t.toFixed(1)} s
+                {t('transferTime')}: {t_SI_s.toFixed(1)} s
               </p>
             )}
           </div>
+          
+          {/* Dev-only debug line */}
+          {debugMode && (
+            <div className="mt-3 p-2 bg-muted/50 rounded text-xs font-mono">
+              D_SI = {D_SI_m || 'undefined'} m, A_SI = {A_SI_m2 || 'undefined'} m², t_check = {t_SI_s || 'undefined'} s
+            </div>
+          )}
         </div>
 
         {/* Diameter Sanity Check Banner */}
-        {results.D && inputs?.V && !checkDiameterSanity(results.D, inputs.V) && (
+        {D_SI_m && inputs?.V && !checkDiameterSanity(D_SI_m, inputs.V) && (
           <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
             <div className="flex items-start space-x-3">
               <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
@@ -281,7 +301,7 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
                   Diameter appears unphysically large for the selected volume. Check units (mm³ vs L).
                 </p>
                 <p className="text-xs text-orange-600 dark:text-orange-400">
-                  Computed: {(results.D * 1000).toFixed(2)} mm for {(inputs.V * 1e9).toFixed(0)} mm³ volume (D_eq ≈ {(Math.pow(6 * inputs.V / Math.PI, 1/3) * 1000).toFixed(2)} mm)
+                  Computed: {formatLength(D_SI_m, userLengthUnit)} {LENGTH_LABEL[userLengthUnit]} for {(inputs.V * 1e9).toFixed(0)} mm³ volume (D_eq ≈ {formatLength(Math.pow(6 * inputs.V / Math.PI, 1/3), userLengthUnit)} {LENGTH_LABEL[userLengthUnit]})
                 </p>
               </div>
             </div>
