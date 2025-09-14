@@ -10,6 +10,7 @@ import { ComputeOutputs, ComputeInputs, BracketError, IntegralError, ResidualErr
 import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
 import { formatLength, LengthUnit, LENGTH_LABEL, toSI_Length } from '@/lib/length-units';
+import DevDump from '@/components/DevDump';
 
 interface ResultsCardProps {
   results: ComputeOutputs | null;
@@ -19,6 +20,7 @@ interface ResultsCardProps {
   onRetry?: () => void;
   debugMode?: boolean;
   userLengthUnit?: LengthUnit;
+  devNote?: any;
 }
 
 // Conversion back helper
@@ -34,6 +36,7 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
   onRetry,
   debugMode = false,
   userLengthUnit = 'mm',
+  devNote,
 }) => {
   const { t, language } = useI18n();
   const { toast } = useToast();
@@ -219,17 +222,20 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
 
   if (error) {
     return (
-      <Card className="engineering-card border-destructive">
-        <CardHeader>
-          <CardTitle className="text-destructive flex items-center">
-            <AlertTriangle className="w-5 h-5 mr-2" />
-            Error
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-destructive">{error}</p>
-        </CardContent>
-      </Card>
+      <>
+        <Card className="engineering-card border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center">
+              <AlertTriangle className="w-5 h-5 mr-2" />
+              Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-destructive">{error}</p>
+          </CardContent>
+        </Card>
+        <DevDump title="Error Debug" note={devNote} />
+      </>
     );
   }
 

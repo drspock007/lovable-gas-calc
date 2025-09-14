@@ -239,8 +239,18 @@ export const Calculator: React.FC = () => {
           calculationResults = computeDfromT(calculationInputs);
         } else {
           // Use new action for Time from Diameter with model selection
-          const timeResultData = await computeTimeFromD(calculationInputs);
+          const timeResultData = await computeTimeFromD({
+            ...calculationInputs,
+            diameter: inputValues.D,
+            diameterUnit: inputValues.D_unit,
+            debug: debugMode
+          });
           setTimeResult(timeResultData);
+          
+          // Handle debug information from computation
+          if (debugMode && timeResultData.debugNote) {
+            setDevNote(JSON.stringify(timeResultData.debugNote, null, 2));
+          }
           
           // Warning: Check if capillary time >> orifice time
           if (timeResultData.model === "capillary") {
@@ -586,6 +596,7 @@ export const Calculator: React.FC = () => {
                   result={timeResult} 
                   unitTime="s" 
                   debug={debugMode} 
+                  devNote={devNote}
                 />
               ) : (
                 <ResultsCard 
@@ -596,6 +607,7 @@ export const Calculator: React.FC = () => {
                   onRetry={handleRetry}
                   debugMode={debugMode}
                   userLengthUnit="mm"
+                  devNote={devNote}
                 />
               )}
             </div>
