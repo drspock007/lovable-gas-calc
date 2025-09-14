@@ -49,6 +49,7 @@ export interface InputValues {
   Cd: number;
   mu_override?: number;
   tolerance?: number;
+  debug?: boolean;
 }
 
 interface InputsCardProps {

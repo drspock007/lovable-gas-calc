@@ -63,6 +63,7 @@ export const Calculator: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [lastComputeInputs, setLastComputeInputs] = useState<ComputeInputs | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+  const [devNote, setDevNote] = useState<string>('');
 
   // Load shared calculation from URL on mount
   useEffect(() => {
@@ -287,6 +288,21 @@ export const Calculator: React.FC = () => {
       setError(errorMessage);
       setResults(null);
       setTimeResult(null);
+      
+      // Enhanced debugging for diameter validation errors
+      if (errorMessage.includes('Invalid diameter') && inputValues.debug) {
+        const { parseDecimalLoose } = await import('@/lib/num-parse');
+        const { toSI_Length } = await import('@/lib/length-units');
+        
+        const dbg = {
+          diameterRaw: inputValues.D,
+          diameterUnit: inputValues.D_unit,
+          parsed: parseDecimalLoose(inputValues.D),
+          D_SI: toSI_Length(parseDecimalLoose(inputValues.D || 0), inputValues.D_unit),
+        };
+        console.warn("[TimeFromD ERROR]", dbg, err);
+        setDevNote(JSON.stringify(dbg, null, 2)); // petit bloc dans Dev Panel
+      }
       
       toast({
         title: "Calculation Error",
