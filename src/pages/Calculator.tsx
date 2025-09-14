@@ -35,7 +35,7 @@ import {
 } from '@/lib/units';
 import { PressureUnit, toSI_Pressure, absFromGauge, gaugeFromAbs, patmFromAltitude, clampAbs } from '@/lib/pressure-units';
 import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
-import { DebugPanel } from '@/components/DebugPanel';
+import DevPanel from '@/components/DevPanel';
 
 export const Calculator: React.FC = () => {
   const { t, language, setLanguage } = useI18n();
@@ -491,7 +491,9 @@ export const Calculator: React.FC = () => {
 
   // Mode-aware disabled logic - only block on genuine physics impossibility
   const disabled = useMemo(() => {
-    console.error("🔥 EVERY VALIDATION:", { P2: inputValues.P2, type: typeof inputValues.P2 });
+    if (debugMode && inputValues.P2 != null) {
+      console.info("🔥 EVERY VALIDATION:", { P2: inputValues.P2, type: typeof inputValues.P2 });
+    }
     if (loading) return true;
 
     // Basic required fields check - 0 is a valid value for pressure!
@@ -515,16 +517,18 @@ export const Calculator: React.FC = () => {
       const P1_abs = toAbs(inputValues.P1, unit);
       const P2_abs = toAbs(inputValues.P2, unit);
       
-      console.error("🔥 ABS CALCULATION:", { 
-        P1: inputValues.P1, P1_abs, 
-        P2: inputValues.P2, P2_abs,
-        unit, Patm, 
-        pressureInputMode: inputValues.pressureInputMode 
-      });
+      if (debugMode) {
+        console.info("🔥 ABS CALCULATION:", { 
+          P1: inputValues.P1, P1_abs, 
+          P2: inputValues.P2, P2_abs,
+          unit, Patm, 
+          pressureInputMode: inputValues.pressureInputMode 
+        });
+      }
 
       // Debug spécifique pour P2 = 0
-      if (inputValues.P2 === 0) {
-        console.error("🔥 P2=0 VALIDATION:", { 
+      if (debugMode && inputValues.P2 === 0) {
+        console.info("🔥 P2=0 VALIDATION:", { 
           P2: inputValues.P2, unit, Patm, P2_abs,
           pressureInputMode: inputValues.pressureInputMode,
           P1_abs_ok: P1_abs > 1,
@@ -619,13 +623,7 @@ export const Calculator: React.FC = () => {
                 setInputValues(prev => ({ ...prev, ...inputs }));
               }} />
               <ExplainCard />
-              <DebugPanel 
-                debugMode={debugMode}
-                onDebugToggle={setDebugMode}
-                siInputs={computeInputs}
-                samplingData={results?.sampling || null}
-                results={results}
-              />
+              <DevPanel />
             </div>
           </div>
 
