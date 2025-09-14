@@ -452,6 +452,16 @@ export const Calculator: React.FC = () => {
       const P1_abs = toAbs(inputValues.P1, unit);
       const P2_abs = toAbs(inputValues.P2, unit);
 
+      // Debug pour P2 gauge = 0
+      if (inputValues.pressureInputMode === "gauge" && String(inputValues.P2) === "0") {
+        console.error("🔥 P2 GAUGE=0 DEBUG:", { 
+          P1: inputValues.P1, P2: inputValues.P2, unit, Patm,
+          P1_abs, P2_abs, 
+          pressureInputMode: inputValues.pressureInputMode,
+          validation: P1_abs > 1 && P2_abs > 1
+        });
+      }
+
       // Only block on genuine physics impossibility:
       if (!(P1_abs > 1 && P2_abs > 1)) return true;               // need positive absolutes
       if (process === "blowdown" && !(P1_abs > P2_abs)) return true;
