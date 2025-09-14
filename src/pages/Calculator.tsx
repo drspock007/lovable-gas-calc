@@ -437,6 +437,14 @@ export const Calculator: React.FC = () => {
 
     // Re-evaluate ABSOLUTE pressures with current mode
     try {
+      // Debug général pour voir la structure des données
+      console.error("🔥 DISABLED CHECK:", { 
+        inputValues, 
+        P1: inputValues.P1, 
+        P2: inputValues.P2, 
+        pressureInputMode: inputValues.pressureInputMode
+      });
+      
       const parse = (s: string) => Number(String(s).replace(/\s/g,"").replace(",","."));
       const unit = inputValues.P1_unit as PressureUnit;
       const Patm =
