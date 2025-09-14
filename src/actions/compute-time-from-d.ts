@@ -4,7 +4,7 @@
  */
 
 import { buildAbsoluteSIFromUI } from "@/lib/build-si";
-import { timeFromDiameterPipeline } from "@/lib/pipeline-time-from-d";
+import { computeTimeFromDiameter } from "@/lib/pipeline-time-from-d";
 
 /**
  * Compute time from diameter using pipeline approach
@@ -13,7 +13,7 @@ import { timeFromDiameterPipeline } from "@/lib/pipeline-time-from-d";
  */
 export async function computeTimeFromD(ui: any) {
   const SI = buildAbsoluteSIFromUI(ui);
-  const res = timeFromDiameterPipeline({ ...ui, __SI__: SI, model: ui.model });
+  const res = computeTimeFromDiameter({ ...ui, __SI__: SI, model: ui.model });
   
   // Optionnel: résiduel (rejouer t(A*)) pour transparence
   const t_check = res.t_SI_s; // même moteur, donc égal ici
