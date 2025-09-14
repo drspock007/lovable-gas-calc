@@ -1809,13 +1809,10 @@ function capillaryTfromD_blowdown(inputs: ComputeInputs): number {
  * @param A_SI_m2 Cross-sectional area [m²]
  * @returns Time [s]
  */
-export function timeOrificeFromAreaSI(SI: any, A_SI: number): number {
-  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, Cd = 0.62, epsilon = 0.01 } = SI;
-  const { R, gamma } = gas; // mu inutile en orifice
-  // Intégrale (split sonic si r_crit atteint); retourne I_total dimensionless
-  const I = orificeIsothermalIntegral(P1, P2, T, gamma, R, epsilon); // à garder commun avec t->D
-  // t = (V / (R T Cd A)) * I
-  return (V / (R * T * Cd * A_SI)) * I.I;
+export function timeOrificeFromAreaSI(SI:any, A_SI:number){
+  const { V_SI_m3:V, P1_Pa:P1, P2_Pa:P2, T_K:T, gas:{R,gamma}, Cd=0.62, epsilon=0.01 } = SI;
+  const I = orificeIsothermalIntegral(P1, P2, T, gamma, R, epsilon);  // même intégrale que l'inverse
+  return (V / (R * T * Cd * A_SI)) * I.I;                               // Cd au dénominateur, UNE fois
 }
 
 /**
