@@ -1,6 +1,6 @@
-export type LengthUnit = "m" | "mm" | "cm";
-const LEN2SI: Record<LengthUnit, number> = { m: 1, mm: 1e-3, cm: 1e-2 };
-export const LENGTH_LABEL: Record<LengthUnit,string> = { m:'m', cm:'cm', mm:'mm' };
+export type LengthUnit = "m" | "mm" | "cm" | "µm";
+const LEN2SI: Record<LengthUnit, number> = { m: 1, mm: 1e-3, cm: 1e-2, "µm": 1e-6 };
+export const LENGTH_LABEL: Record<LengthUnit,string> = { m:'m', cm:'cm', mm:'mm', "µm":'µm' };
 
 // ⚠️ tolérant aux variantes (espaces, majuscules, symbole "µm", etc.)
 export function normalizeLengthUnit(u: unknown): LengthUnit {
@@ -8,7 +8,7 @@ export function normalizeLengthUnit(u: unknown): LengthUnit {
   if (raw === "m") return "m";
   if (raw === "mm") return "mm";
   if (raw === "cm") return "cm";
-  if (raw === "μm" || raw === "um" || raw === "µm") return "mm"; // on laissera parse * 1e-3 ensuite
+  if (raw === "μm" || raw === "um" || raw === "µm") return "µm"; // 1e-6 m
   return "mm"; // défaut safe pour l'UI
 }
 

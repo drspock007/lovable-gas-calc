@@ -14,7 +14,7 @@ export function computeTimeFromDiameter(ui: any) {
     const note = { diameterRaw: raw, diameterUnit: unit, parsed, D_SI };
     if (ui?.debug) console.warn("[TimeFromD ERROR]", note);
     const err: any = new Error("Invalid diameter");
-    (err.devNote = note);
+    err.devNote = note;
     throw err;
   }
 
@@ -25,10 +25,10 @@ export function computeTimeFromDiameter(ui: any) {
     : timeCapillaryFromAreaSI(ui.__SI__, A_SI);
 
   return {
+    model,
     D_SI_m: D_SI,
     A_SI_m2: A_SI,
     t_SI_s: t_SI,
-    model,
     debugNote: { diameterRaw: raw, diameterUnit: unit, parsed, D_SI_m: D_SI, A_SI_m2: A_SI, model, t_SI_s: t_SI }
   };
 }

@@ -13,6 +13,9 @@ export function ResultsTimeFromD({ result, devNote, unitTime="s" }: any) {
     <>
       <section className="card p-4">
         <div className="text-2xl font-bold">{Number.isFinite(shown) ? shown.toFixed(3) : "—"} {unitTime}</div>
+        {result?.model && (
+          <div className="text-sm text-muted-foreground mt-1">Model: {result.model}</div>
+        )}
       </section>
       <DevDump title="Time-from-D Debug" note={devNote ?? result?.debugNote} />
     </>
