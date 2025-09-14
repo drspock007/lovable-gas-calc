@@ -20,17 +20,10 @@ export function useComputeTimeFromD(values: any) {
         debug,
       });
       setResult(res);
-      if (debug) {
-        setDevNote({
-          diameter: values.diameter,
-          diameterUnit: values.diameterUnit,
-          D_SI_m: res.D_SI_m,
-          A_SI_m2: res.A_SI_m2,
-          model: res.model
-        });
-      }
+      setDevNote(res.debugNote ?? null);
     } catch (e: any) {
       setError(e?.message ?? "Compute failed");
+      setDevNote(e?.devNote ?? null);
     }
   }
 
