@@ -452,6 +452,13 @@ export const Calculator: React.FC = () => {
 
       const P1_abs = toAbs(inputValues.P1, unit);
       const P2_abs = toAbs(inputValues.P2, unit);
+      
+      console.error("🔥 ABS CALCULATION:", { 
+        P1: inputValues.P1, P1_abs, 
+        P2: inputValues.P2, P2_abs,
+        unit, Patm, 
+        pressureInputMode: inputValues.pressureInputMode 
+      });
 
       // Debug spécifique pour P2 = 0
       if (inputValues.P2 === 0) {
