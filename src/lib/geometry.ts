@@ -1,0 +1,1 @@
+export const areaFromDiameterSI = (D_SI: number) => Math.PI * (D_SI * D_SI) / 4;
