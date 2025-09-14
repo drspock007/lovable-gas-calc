@@ -437,14 +437,6 @@ export const Calculator: React.FC = () => {
 
     // Re-evaluate ABSOLUTE pressures with current mode
     try {
-      // Debug général pour voir la structure des données
-      console.error("🔥 DISABLED CHECK:", { 
-        inputValues, 
-        P1: inputValues.P1, 
-        P2: inputValues.P2, 
-        pressureInputMode: inputValues.pressureInputMode
-      });
-      
       const parse = (s: string) => Number(String(s).replace(/\s/g,"").replace(",","."));
       const unit = inputValues.P1_unit as PressureUnit;
       const Patm =
@@ -460,13 +452,14 @@ export const Calculator: React.FC = () => {
       const P1_abs = toAbs(inputValues.P1, unit);
       const P2_abs = toAbs(inputValues.P2, unit);
 
-      // Debug pour P2 gauge = 0
-      if (inputValues.pressureInputMode === "gauge" && String(inputValues.P2) === "0") {
-        console.error("🔥 P2 GAUGE=0 DEBUG:", { 
-          P1: inputValues.P1, P2: inputValues.P2, unit, Patm,
-          P1_abs, P2_abs, 
+      // Debug spécifique pour P2 = 0
+      if (inputValues.P2 === 0) {
+        console.error("🔥 P2=0 VALIDATION:", { 
+          P2: inputValues.P2, unit, Patm, P2_abs,
           pressureInputMode: inputValues.pressureInputMode,
-          validation: P1_abs > 1 && P2_abs > 1
+          P1_abs_ok: P1_abs > 1,
+          P2_abs_ok: P2_abs > 1,
+          both_ok: P1_abs > 1 && P2_abs > 1
         });
       }
 
