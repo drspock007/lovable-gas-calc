@@ -265,16 +265,62 @@ export const Calculator: React.FC = () => {
             setDevNote(JSON.stringify(timeResultData.debugNote, null, 2));
           }
           
-          // Warning: Check if capillary time >> orifice time
+          // Enhanced warning: Check if capillary time >> orifice time
           if (timeResultData.model === "capillary") {
             const { timeOrificeFromAreaSI } = await import('@/lib/physics');
             const t_orifice_ref = timeOrificeFromAreaSI(timeResultData.SI, timeResultData.A_SI_m2);
-            if (timeResultData.t_SI_s > 5 * t_orifice_ref) {
+            const timeRatio = timeResultData.t_SI_s / t_orifice_ref;
+            
+            if (timeRatio > 5) {
               toast({
-                title: "Model Warning",
-                description: "Capillary time >> Orifice time; vérifiez le choix de modèle (Re, L/D).",
+                title: "Modèle très sensible",
+                description: `Résultat très sensible au modèle — vérifiez Re, L/D et le choix Capillary/Orifice. (t_cap/t_orifice = ${timeRatio.toFixed(1)}×)`,
                 variant: "destructive",
-                duration: 8000,
+                duration: 10000,
+              });
+            }
+          }
+          
+          // Check for unphysically large diameter vs vessel volume
+          if (timeResultData.SI?.V_SI_m3 && timeResultData.D_SI_m) {
+            const vesselVolume = timeResultData.SI.V_SI_m3;
+            const D_SI = timeResultData.D_SI_m;
+            // Equivalent spherical diameter: D_equiv = (6V/π)^(1/3)
+            const D_equiv_sphere = Math.pow(6 * vesselVolume / Math.PI, 1/3);
+            // For cylinder: D_equiv = (4V/π/L)^(1/2)
+            const vesselLength = timeResultData.SI.L_m || 0.001;
+            const D_equiv_cylinder = Math.sqrt(4 * vesselVolume / (Math.PI * vesselLength));
+            const D_equiv = Math.min(D_equiv_sphere, D_equiv_cylinder);
+            const diameterRatio = D_SI / D_equiv;
+            
+            if (diameterRatio > 0.1) { // > 10% of vessel equivalent diameter
+              toast({
+                title: "Diamètre suspect",
+                description: `Unphysically large diameter vs vessel volume (${(diameterRatio * 100).toFixed(1)}% of equivalent diameter: ${(D_equiv * 1000).toFixed(2)} mm)`,
+                variant: "destructive", 
+                duration: 12000,
+              });
+            }
+          }
+          
+          // Check for unphysically large diameter vs vessel volume
+          if (timeResultData.SI?.V_SI_m3 && timeResultData.D_SI_m) {
+            const vesselVolume = timeResultData.SI.V_SI_m3;
+            const D_SI = timeResultData.D_SI_m;
+            // Equivalent spherical diameter: D_equiv = (6V/π)^(1/3)
+            const D_equiv_sphere = Math.pow(6 * vesselVolume / Math.PI, 1/3);
+            // For cylinder: D_equiv = (4V/π/L)^(1/2)
+            const vesselLength = timeResultData.SI.L_m || 0.001;
+            const D_equiv_cylinder = Math.sqrt(4 * vesselVolume / (Math.PI * vesselLength));
+            const D_equiv = Math.min(D_equiv_sphere, D_equiv_cylinder);
+            const diameterRatio = D_SI / D_equiv;
+            
+            if (diameterRatio > 0.1) { // > 10% of vessel equivalent diameter
+              toast({
+                title: "Diamètre suspect",
+                description: `Unphysically large diameter vs vessel volume (${(diameterRatio * 100).toFixed(1)}% of equivalent diameter: ${(D_equiv * 1000).toFixed(2)} mm)`,
+                variant: "destructive", 
+                duration: 12000,
               });
             }
           }
