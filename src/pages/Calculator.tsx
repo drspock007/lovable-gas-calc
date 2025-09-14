@@ -237,6 +237,19 @@ export const Calculator: React.FC = () => {
       } else {
         if (solveFor === 'DfromT') {
           calculationResults = computeDfromT(calculationInputs);
+          
+          // Check if auto-detection would suggest different model for DfromT
+          if (calculationResults.verdict !== modelSelection) {
+            const autoModel = calculationResults.verdict === 'both' ? 'orifice' : calculationResults.verdict;
+            if (autoModel !== modelSelection && ['orifice', 'capillary'].includes(autoModel)) {
+              toast({
+                title: "Suggestion de modèle",
+                description: `L'auto-détection suggère le modèle "${autoModel}" au lieu de "${modelSelection}".`,
+                variant: "default",
+                duration: 6000,
+              });
+            }
+          }
         } else {
           // Use new action for Time from Diameter with model selection
           const timeResultData = await computeTimeFromD({
@@ -277,7 +290,7 @@ export const Calculator: React.FC = () => {
           // Check if auto-detection suggests different model
           if (timeResultData.model !== modelSelection) {
             toast({
-              title: "Model Auto-Detection",
+              title: "Suggestion de modèle",
               description: `Auto-switched to ${timeResultData.model} model (Re${timeResultData.model === 'capillary' ? '<2000' : '>2000'})`,
               duration: 5000,
             });

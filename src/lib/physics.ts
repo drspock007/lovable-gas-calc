@@ -1206,6 +1206,9 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     let capillary_error: string | undefined;
     let orifice_error: string | undefined;
     
+    // Check if model is forced via modelSelection
+    const forcedModel = inputs.modelSelection;
+    
     // 1) Compute D_cap via capillary model
     try {
       if (inputs.process === 'blowdown') {
@@ -1596,7 +1599,34 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
       ori_valid = true; // Orifice model is more generally applicable
     }
     
-    if (cap_valid && ori_valid && !capillary_deprioritized) {
+    // Check if model is forced via modelSelection
+    const forcedModel = inputs.modelSelection;
+    
+    // Handle forced model selection first
+    if (forcedModel) {
+      if (forcedModel === 'capillary') {
+        if (t_capillary !== undefined) {
+          verdict = 'capillary';
+          t = t_capillary;
+          rationale = `Capillary model used (forced by user selection). Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)}.`;
+          
+          // Still check validity for warnings
+          if (!cap_valid || capillary_deprioritized) {
+            warnings.push(`Warning: Capillary model may not be optimal for this case (Re=${Math.round(diagnostics.Re as number)}, L/D=${Math.round(diagnostics['L/D'] as number)})`);
+          }
+        } else {
+          throw new Error(`Capillary model failed: ${capillary_error || 'No result computed'}`);
+        }
+      } else if (forcedModel === 'orifice') {
+        if (t_orifice !== undefined) {
+          verdict = 'orifice';
+          t = t_orifice;
+          rationale = `Orifice model used (forced by user selection). ${diagnostics.choked ? 'Choked' : 'Subsonic'} flow.`;
+        } else {
+          throw new Error(`Orifice model failed: ${orifice_error || 'No result computed'}`);
+        }
+      }
+    } else if (cap_valid && ori_valid && !capillary_deprioritized) {
       // Both valid and capillary not de-prioritized - use forward simulation to pick best
       let cap_residual = Infinity;
       let ori_residual = Infinity;
