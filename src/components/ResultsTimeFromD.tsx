@@ -4,18 +4,17 @@
  */
 
 import { Card } from "@/components/ui/card";
+import DevDump from "@/components/DevDump";
 
-export function ResultsTimeFromD({ result, unitTime="s", debug }: any){
-  const t = result?.t_SI_s ?? NaN;
+export function ResultsTimeFromD({ result, devNote, unitTime="s" }: any) {
+  const t = result?.t_SI_s;
   const shown = unitTime==="s" ? t : unitTime==="min" ? t/60 : t/3600;
   return (
-    <div className="card">
-      <div className="text-2xl font-bold">{Number.isFinite(shown) ? shown.toFixed(3) : "—"} {unitTime}</div>
-      {debug && (
-        <div className="mt-1 text-xs opacity-70">
-          model={result.model} · D_SI={result.D_SI_m} m · A_SI={result.A_SI_m2} m² · t={result.t_SI_s} s
-        </div>
-      )}
-    </div>
+    <>
+      <section className="card p-4">
+        <div className="text-2xl font-bold">{Number.isFinite(shown) ? shown.toFixed(3) : "—"} {unitTime}</div>
+      </section>
+      <DevDump title="Time-from-D Debug" note={devNote ?? result?.debugNote} />
+    </>
   );
 }
