@@ -56,6 +56,8 @@ export interface ComputeInputs {
   t?: number;
   /** Atmospheric pressure [Pa] for diagnostics */
   Patm_SI?: number;
+  /** Model selection override */
+  modelSelection?: 'orifice' | 'capillary';
 }
 
 /**

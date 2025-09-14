@@ -1,25 +1,31 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDown, ArrowUp, Timer, Ruler } from 'lucide-react';
+import { ArrowDown, ArrowUp, Timer, Ruler, Zap, Waves } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
 
 export type ProcessType = 'blowdown' | 'filling';
 export type SolveForType = 'DfromT' | 'TfromD';
+export type ModelSelectionType = 'orifice' | 'capillary';
 
 interface ModeSelectorProps {
   process: ProcessType;
   solveFor: SolveForType;
+  modelSelection: ModelSelectionType;
   onProcessChange: (process: ProcessType) => void;
   onSolveForChange: (solveFor: SolveForType) => void;
+  onModelSelectionChange: (model: ModelSelectionType) => void;
 }
 
 export const ModeSelector: React.FC<ModeSelectorProps> = ({ 
   process, 
   solveFor, 
+  modelSelection,
   onProcessChange, 
-  onSolveForChange 
+  onSolveForChange,
+  onModelSelectionChange
 }) => {
   const { t } = useI18n();
 
@@ -78,6 +84,31 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
               <Timer className="w-5 h-5 mb-1" />
               <span className="text-xs">Time</span>
               <span className="text-xs text-muted-foreground">from diameter</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Flow Model */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Flow Model</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant={modelSelection === 'orifice' ? 'default' : 'outline'}
+              onClick={() => onModelSelectionChange('orifice')}
+              className="touch-target justify-center h-16 flex-col"
+            >
+              <Zap className="w-5 h-5 mb-1" />
+              <span className="text-xs">Orifice</span>
+              <span className="text-xs text-muted-foreground">Sharp edge</span>
+            </Button>
+            <Button
+              variant={modelSelection === 'capillary' ? 'default' : 'outline'}
+              onClick={() => onModelSelectionChange('capillary')}
+              className="touch-target justify-center h-16 flex-col"
+            >
+              <Waves className="w-5 h-5 mb-1" />
+              <span className="text-xs">Capillary</span>
+              <span className="text-xs text-muted-foreground">Poiseuille</span>
             </Button>
           </div>
         </div>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { ModeSelector, ProcessType, SolveForType } from '@/components/ModeSelector';
+import { ModeSelector, ProcessType, SolveForType, ModelSelectionType } from '@/components/ModeSelector';
 import { InputsCard, InputValues } from '@/components/InputsCard';
 import { ResultsCard } from '@/components/ResultsCard';
+import { ResultsTimeFromD } from '@/components/ResultsTimeFromD';
 import { ExplainCard } from '@/components/ExplainCard';
 import { ExamplePresets } from '@/components/ExamplePresets';
 import { StickyBottomBar } from '@/components/StickyBottomBar';
@@ -24,6 +25,7 @@ import {
   IntegralError,
   solveOrificeDfromTWithRetry
 } from '@/lib/physics';
+import { computeTimeFromD } from '@/actions/compute-time-from-d';
 import { 
   pressureToSI, 
   volumeToSI, 
@@ -41,6 +43,7 @@ export const Calculator: React.FC = () => {
   
   const [process, setProcess] = useState<ProcessType>('blowdown');
   const [solveFor, setSolveFor] = useState<SolveForType>('DfromT');
+  const [modelSelection, setModelSelection] = useState<ModelSelectionType>('orifice');
   const [inputValues, setInputValues] = useState<InputValues>(() => {
     // Load from localStorage on mount
     const stored = localStorage.getItem('gasTransfer-inputValues');
@@ -54,6 +57,7 @@ export const Calculator: React.FC = () => {
     return {} as InputValues;
   });
   const [results, setResults] = useState<ComputeOutputs | null>(null);
+  const [timeResult, setTimeResult] = useState<any>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -156,6 +160,9 @@ export const Calculator: React.FC = () => {
         calculationInputs.D = lengthToSI(inputValues.D, inputValues.D_unit as any || 'mm');
       }
 
+      // Add model selection to inputs
+      calculationInputs.modelSelection = modelSelection;
+
       // Store inputs for retry functionality
       setLastComputeInputs(calculationInputs);
 
@@ -227,19 +234,32 @@ export const Calculator: React.FC = () => {
           calculationResults = computeDfromT(calculationInputs);
         }
       } else {
-        calculationResults = solveFor === 'DfromT' 
-          ? computeDfromT(calculationInputs)
-          : computeTfromD(calculationInputs);
+        if (solveFor === 'DfromT') {
+          calculationResults = computeDfromT(calculationInputs);
+        } else {
+          // Use new action for Time from Diameter with model selection
+          const timeResultData = await computeTimeFromD(calculationInputs);
+          setTimeResult(timeResultData);
+          
+          // Convert to ComputeOutputs format for compatibility
+          calculationResults = {
+            t: timeResultData.t_SI_s,
+            verdict: timeResultData.model as any,
+            diagnostics: { model: timeResultData.model },
+            warnings: []
+          };
+          
+          // Check if auto-detection suggests different model
+          if (timeResultData.model !== modelSelection) {
+            toast({
+              title: "Model Auto-Detection",
+              description: `Auto-switched to ${timeResultData.model} model (Re${timeResultData.model === 'capillary' ? '<2000' : '>2000'})`,
+              duration: 5000,
+            });
+          }
+        }
       }
-        
-      setResults(calculationResults);
       
-      toast({
-        title: "Calculation Complete",
-        description: `${solveFor === 'DfromT' ? 'Diameter' : 'Time'} calculated successfully`,
-        duration: 3000,
-      });
-        
       setResults(calculationResults);
       
       toast({
@@ -252,6 +272,7 @@ export const Calculator: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : 'Calculation failed';
       setError(errorMessage);
       setResults(null);
+      setTimeResult(null);
       
       toast({
         title: "Calculation Error",
@@ -336,6 +357,7 @@ export const Calculator: React.FC = () => {
 
   const handleClear = () => {
     setResults(null);
+    setTimeResult(null);
     setError('');
     // Reset to default values
     setInputValues({} as InputValues);
@@ -514,8 +536,10 @@ export const Calculator: React.FC = () => {
               <ModeSelector
                 process={process}
                 solveFor={solveFor}
+                modelSelection={modelSelection}
                 onProcessChange={setProcess}
                 onSolveForChange={setSolveFor}
+                onModelSelectionChange={setModelSelection}
               />
               
               <InputsCard
@@ -527,15 +551,23 @@ export const Calculator: React.FC = () => {
                 loading={loading}
               />
               
-              <ResultsCard 
-                results={results} 
-                solveFor={solveFor}
-                inputs={lastComputeInputs}
-                error={error}
-                onRetry={handleRetry}
-                debugMode={debugMode}
-                userLengthUnit="mm"
-              />
+              {solveFor === 'TfromD' && timeResult ? (
+                <ResultsTimeFromD 
+                  result={timeResult} 
+                  unitTime="s" 
+                  debug={debugMode} 
+                />
+              ) : (
+                <ResultsCard 
+                  results={results} 
+                  solveFor={solveFor}
+                  inputs={lastComputeInputs}
+                  error={error}
+                  onRetry={handleRetry}
+                  debugMode={debugMode}
+                  userLengthUnit="mm"
+                />
+              )}
             </div>
 
             <div className="space-y-6">
