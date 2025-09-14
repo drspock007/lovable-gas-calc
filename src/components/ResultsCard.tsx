@@ -496,12 +496,15 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
               onClick={handleShare}
               className="flex items-center gap-2"
             >
-              <Share2 className="w-4 h-4" />
-              {t('share')}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+            <Share2 className="w-4 h-4" />
+            {t('share')}
+          </Button>
+        </div>
+      )}
+      
+      {/* Debug Information */}
+      <DevDump title="Computation Debug" note={devNote} />
+    </CardContent>
+  </Card>
+);
 };
