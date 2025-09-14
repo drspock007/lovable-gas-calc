@@ -15,11 +15,13 @@ export function computeDisabledReason(values: any): DisabledReason {
   try {
     const { pressureInputMode, patmMode, patmValue, altitude_m, process, P1, P2, Ps } = values;
     
-    // Debug logging for gauge zero case
-    console.info("DEBUG compute-enabled called:", { 
-      pressureInputMode, P1: P1?.value, P2: P2?.value, process,
-      P1_empty: empty(P1?.value), P2_empty: empty(P2?.value)
-    });
+    // Debug logging pour tous les appels
+    if (P2?.value === "0") {
+      console.error("🔥 P2=0 DEBUG:", { 
+        pressureInputMode, P1_val: P1?.value, P2_val: P2?.value, process,
+        P1_empty: empty(P1?.value), P2_empty: empty(P2?.value)
+      });
+    }
 
     if (empty(P1?.value) || empty(P2?.value)) return "parse-error";
     if (process === "filling" && empty(Ps?.value)) return "parse-error";
