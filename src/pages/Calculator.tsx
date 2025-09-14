@@ -429,6 +429,7 @@ export const Calculator: React.FC = () => {
 
   // Mode-aware disabled logic - only block on genuine physics impossibility
   const disabled = useMemo(() => {
+    console.error("🔥 EVERY VALIDATION:", { P2: inputValues.P2, type: typeof inputValues.P2 });
     if (loading) return true;
 
     // Basic required fields check
