@@ -28,7 +28,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
   const [reason, setReason] = useState<DisabledReason>("parse-error");
 
   useEffect(() => {
-    const newReason = computeDisabledReason(values);
+    const newReason = computeDisabledReason(values, values?.debug);
     setReason(newReason);
     
     // Debug logging when debug mode is enabled
