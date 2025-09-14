@@ -5,53 +5,17 @@
 
 import { Card } from "@/components/ui/card";
 
-interface ResultsTimeFromDProps {
-  result?: {
-    t_SI_s: number;
-    D_SI_m: number;
-    A_SI_m2: number;
-    model: "orifice" | "capillary";
-  };
-  debug?: boolean;
-  unitTime?: "s" | "min" | "h";
-}
-
-export function ResultsTimeFromD({ result, debug, unitTime = "s" }: ResultsTimeFromDProps) {
-  if (!result) {
-    return (
-      <Card className="p-6">
-        <div className="text-muted-foreground">No results available</div>
-      </Card>
-    );
-  }
-
-  // 1) t = valeur SI du moteur
-  const t_s = result.t_SI_s;
-  const shown = unitTime === "s" ? t_s : unitTime === "min" ? t_s / 60 : t_s / 3600;
-
+export function ResultsTimeFromD({ result, unitTime="s", debug }: any){
+  const t = result?.t_SI_s ?? NaN;
+  const shown = unitTime==="s" ? t : unitTime==="min" ? t/60 : t/3600;
   return (
-    <Card className="p-6">
-      <div className="space-y-4">
-        <div className="text-center">
-          <div className="text-3xl font-bold text-primary">
-            {shown.toFixed(3)} {unitTime}
-          </div>
-          <div className="text-sm text-muted-foreground mt-1">
-            Calculated time ({result.model} model)
-          </div>
+    <div className="card">
+      <div className="text-2xl font-bold">{Number.isFinite(shown) ? shown.toFixed(3) : "—"} {unitTime}</div>
+      {debug && (
+        <div className="mt-1 text-xs opacity-70">
+          model={result.model} · D_SI={result.D_SI_m} m · A_SI={result.A_SI_m2} m² · t={result.t_SI_s} s
         </div>
-        
-        {debug && (
-          <div className="mt-4 p-3 bg-muted/50 rounded-lg">
-            <div className="text-xs text-muted-foreground space-y-1">
-              <div>D_SI = {result.D_SI_m.toExponential(3)} m</div>
-              <div>A_SI = {result.A_SI_m2.toExponential(3)} m²</div>
-              <div>t_check = {result.t_SI_s.toFixed(6)} s</div>
-              <div>Model: {result.model}</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </Card>
+      )}
+    </div>
   );
 }
