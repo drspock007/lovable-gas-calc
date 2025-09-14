@@ -241,6 +241,20 @@ export const Calculator: React.FC = () => {
           const timeResultData = await computeTimeFromD(calculationInputs);
           setTimeResult(timeResultData);
           
+          // Warning: Check if capillary time >> orifice time
+          if (timeResultData.model === "capillary") {
+            const { timeOrificeFromAreaSI } = await import('@/lib/physics');
+            const t_orifice_ref = timeOrificeFromAreaSI(timeResultData.SI, timeResultData.A_SI_m2);
+            if (timeResultData.t_SI_s > 5 * t_orifice_ref) {
+              toast({
+                title: "Model Warning",
+                description: "Capillary time >> Orifice time; vérifiez le choix de modèle (Re, L/D).",
+                variant: "destructive",
+                duration: 8000,
+              });
+            }
+          }
+          
           // Convert to ComputeOutputs format for compatibility
           calculationResults = {
             t: timeResultData.t_SI_s,
