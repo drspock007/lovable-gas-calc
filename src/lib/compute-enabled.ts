@@ -14,6 +14,11 @@ const empty = (s: unknown) =>
 export function computeDisabledReason(values: any): DisabledReason {
   try {
     const { pressureInputMode, patmMode, patmValue, altitude_m, process, P1, P2, Ps } = values;
+    
+    // Debug logging for gauge zero case
+    if (pressureInputMode === "gauge" && P2?.value === "0") {
+      console.info("DEBUG gauge zero:", { P1, P2, pressureInputMode, patmMode, process });
+    }
 
     if (empty(P1?.value) || empty(P2?.value)) return "parse-error";
     if (process === "filling" && empty(Ps?.value)) return "parse-error";
@@ -32,6 +37,12 @@ export function computeDisabledReason(values: any): DisabledReason {
 
     const P1_abs = toAbs(P1.value, P1.unit ?? unit);
     const P2_abs = toAbs(P2.value, P2.unit ?? unit);
+    
+    // Debug logging for gauge zero case
+    if (pressureInputMode === "gauge" && P2?.value === "0") {
+      console.info("DEBUG abs pressures:", { P1_abs, P2_abs, Patm_SI, P1_value: P1.value, P2_value: P2.value });
+    }
+    
     if (!(P1_abs > 1 && P2_abs > 1)) return "invalid-abs";
 
     if (process === "blowdown") {
