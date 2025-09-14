@@ -682,7 +682,7 @@ function solveOrifice_DfromT_isothermal(inputs: ComputeInputs): SolverResultSI {
   const D = Math.sqrt(4*A/Math.PI);
   
   // Forward check using SAME path: isothermal orifice with SAME ε, SAME P_f = P2*(1+ε)
-  const t_check = timeOrificeFromAreaSI(inputs, A);
+  const t_check = timeOrificeFromAreaSI_legacy(inputs, A);
   
   // Residual analysis
   const relativeError = Math.abs(t_check - t_target) / t_target;
@@ -1804,11 +1804,27 @@ function capillaryTfromD_blowdown(inputs: ComputeInputs): number {
 
 /**
  * Returns time [s] for current inputs and area A [m²] using orifice model
+ * Direct formula implementation as expected by pipeline
+ * @param SI Object with SI units and gas properties  
+ * @param A_SI_m2 Cross-sectional area [m²]
+ * @returns Time [s]
+ */
+export function timeOrificeFromAreaSI(SI: any, A_SI: number): number {
+  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, Cd = 0.62, epsilon = 0.01 } = SI;
+  const { R, gamma } = gas; // mu inutile en orifice
+  // Intégrale (split sonic si r_crit atteint); retourne I_total dimensionless
+  const I = orificeIsothermalIntegral(P1, P2, T, gamma, R, epsilon); // à garder commun avec t->D
+  // t = (V / (R T Cd A)) * I
+  return (V / (R * T * Cd * A_SI)) * I.I;
+}
+
+/**
+ * Legacy wrapper for backward compatibility
  * @param inputs Computation inputs (NOT mutated)
  * @param A_SI_m2 Cross-sectional area [m²]
  * @returns Time [s]
  */
-export function timeOrificeFromAreaSI(inputs: ComputeInputs, A_SI_m2: number): number {
+export function timeOrificeFromAreaSI_legacy(inputs: ComputeInputs, A_SI_m2: number): number {
   // Create a copy of inputs with computed diameter from area
   const D = Math.sqrt(4 * A_SI_m2 / Math.PI);
   const inputsCopy: ComputeInputs = { ...inputs, D };
@@ -1822,11 +1838,38 @@ export function timeOrificeFromAreaSI(inputs: ComputeInputs, A_SI_m2: number): n
 
 /**
  * Returns time [s] for current inputs and area A [m²] using capillary model
+ * Direct formula implementation as expected by pipeline
+ * @param SI Object with SI units and gas properties  
+ * @param A_SI Cross-sectional area [m²]
+ * @returns Time [s]
+ */
+export function timeCapillaryFromAreaSI(SI: any, A_SI: number): number {
+  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, L_SI_m: L, epsilon = 0.01 } = SI;
+  const { mu } = gas; // Viscosity needed for capillary flow
+  
+  // Capillary flow uses Poiseuille equation with appropriate pressure integration
+  const D = Math.sqrt(4 * A_SI / Math.PI);
+  const Pf = P2 * (1 + epsilon);
+  
+  // Logarithmic term for blowdown
+  const numerator = (P1 - P2) * (Pf + P2);
+  const denominator = (P1 + P2) * (Pf - P2);
+  
+  if (numerator <= 0 || denominator <= 0) {
+    throw new Error('Invalid pressure conditions for capillary flow');
+  }
+  
+  const lnTerm = Math.log(numerator / denominator);
+  return (128 * mu * L * V * lnTerm) / (Math.PI * D * D * D * D * P2);
+}
+
+/**
+ * Legacy wrapper for backward compatibility
  * @param inputs Computation inputs (NOT mutated)
  * @param A_SI_m2 Cross-sectional area [m²]
  * @returns Time [s]
  */
-export function timeCapillaryFromAreaSI(inputs: ComputeInputs, A_SI_m2: number): number {
+export function timeCapillaryFromAreaSI_legacy(inputs: ComputeInputs, A_SI_m2: number): number {
   // Create a copy of inputs with computed diameter from area
   const D = Math.sqrt(4 * A_SI_m2 / Math.PI);
   const inputsCopy: ComputeInputs = { ...inputs, D };
@@ -1894,7 +1937,7 @@ export function sample_tA(
       // Simulate the bracketing process
       const objectiveFunction = (A: number): number => {
         try {
-          const t_calc = timeOrificeFromAreaSI(inputs, A);
+          const t_calc = timeOrificeFromAreaSI_legacy(inputs, A);
           return t_calc - t_target;
         } catch {
           return NaN;
@@ -1910,8 +1953,8 @@ export function sample_tA(
           
           if (!isNaN(f_lo) && !isNaN(f_hi) && f_lo * f_hi < 0) {
             // We have a valid bracket
-            const t_lo = timeOrificeFromAreaSI(inputs, bracket_A_lo);
-            const t_hi = timeOrificeFromAreaSI(inputs, bracket_A_hi);
+            const t_lo = timeOrificeFromAreaSI_legacy(inputs, bracket_A_lo);
+            const t_hi = timeOrificeFromAreaSI_legacy(inputs, bracket_A_hi);
             
             bracket = {
               A_lo: bracket_A_lo,
@@ -1951,7 +1994,7 @@ export function sample_tA(
     
     try {
       if (model === 'orifice') {
-        t = timeOrificeFromAreaSI(inputs, A);
+        t = timeOrificeFromAreaSI_legacy(inputs, A);
         
         // Get choked/phase info from diagnostics
         const inputsCopy = { ...inputs, D };
@@ -1973,7 +2016,7 @@ export function sample_tA(
           phase = 'sub';
         }
       } else {
-        t = timeCapillaryFromAreaSI(inputs, A);
+        t = timeCapillaryFromAreaSI_legacy(inputs, A);
         // Capillary flow is typically subsonic/laminar
         choked = false;
         phase = 'sub';
