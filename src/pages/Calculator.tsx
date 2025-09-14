@@ -432,8 +432,8 @@ export const Calculator: React.FC = () => {
     console.error("🔥 EVERY VALIDATION:", { P2: inputValues.P2, type: typeof inputValues.P2 });
     if (loading) return true;
 
-    // Basic required fields check
-    if (!inputValues.V || !inputValues.P1 || !inputValues.P2 || !inputValues.T || !inputValues.L) return true;
+    // Basic required fields check - 0 is a valid value for pressure!
+    if (inputValues.V == null || inputValues.P1 == null || inputValues.P2 == null || inputValues.T == null || inputValues.L == null) return true;
     if ((solveFor === 'DfromT' && !inputValues.t) || (solveFor === 'TfromD' && !inputValues.D)) return true;
 
     // Re-evaluate ABSOLUTE pressures with current mode
