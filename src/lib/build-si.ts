@@ -5,6 +5,22 @@
 
 import { toSI_Pressure, absFromGauge, patmFromAltitude } from "@/lib/pressure-units";
 
+export function buildSI(ui:any){
+  const Patm = ui.patmMode==="standard" ? 101325
+    : ui.patmMode==="custom" ? toSI_Pressure(Number(String(ui.patmValue?.value ?? "101.325").replace(",", ".")), ui.patmValue?.unit ?? "kPa")
+    : patmFromAltitude(Number(ui.altitude_m ?? 0));
+  const toAbs = (s:string,u:string)=> {
+    const si = toSI_Pressure(Number(String(s).replace(",", ".")), u as any);
+    return ui.pressureInputMode==="gauge" ? absFromGauge(si, Patm) : si;
+  };
+  return {
+    V_SI_m3: ui.V_SI_m3, T_K: ui.T_SI_K, L_m: ui.L_SI_m,
+    P1_Pa: toAbs(ui.P1.value, ui.P1.unit),
+    P2_Pa: toAbs(ui.P2.value, ui.P2.unit),
+    gas: ui.gas, Cd: ui.Cd, epsilon: ui.epsilon, regime: ui.regime
+  };
+}
+
 /**
  * Build absolute SI units object from UI values
  * Handles gauge/absolute pressure modes and atmospheric pressure settings

@@ -3,7 +3,7 @@
  * Uses unified SI conversion and pipeline approach
  */
 
-import { buildAbsoluteSIFromUI } from "@/lib/build-si";
+import { buildSI } from "@/lib/build-si";
 import { computeTimeFromDiameter } from "@/lib/pipeline-time-from-d";
 
 /**
@@ -12,8 +12,8 @@ import { computeTimeFromDiameter } from "@/lib/pipeline-time-from-d";
  * @returns Result with time, diameter, area, model, and validation check
  */
 export async function computeTimeFromD(ui: any) {
-  const SI = buildAbsoluteSIFromUI(ui);
-  const res = computeTimeFromDiameter({ ...ui, __SI__: SI, model: ui.model });
+  const SI = buildSI(ui);
+  const res = computeTimeFromDiameter({ ...ui, __SI__: SI, modelOverride: ui.modelSelection });
   
   // Optionnel: résiduel (rejouer t(A*)) pour transparence
   const t_check = res.t_SI_s; // même moteur, donc égal ici
