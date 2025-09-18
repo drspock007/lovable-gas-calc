@@ -14,7 +14,9 @@ export function buildSI(ui:any){
     return ui.pressureInputMode==="gauge" ? absFromGauge(si, Patm) : si;
   };
   return {
-    V_SI_m3: ui.V_SI_m3, T_K: ui.T_SI_K, L_m: ui.L_SI_m,
+    V_SI_m3: ui.V_SI_m3, T_K: ui.T_SI_K, 
+    L_SI_m: ui.L_SI_m ?? ui.L_m,
+    L_m: ui.L_SI_m ?? ui.L_m,
     P1_Pa: toAbs(ui.P1.value, ui.P1.unit),
     P2_Pa: toAbs(ui.P2.value, ui.P2.unit),
     gas: ui.gas, Cd: ui.Cd, epsilon: ui.epsilon, regime: ui.regime

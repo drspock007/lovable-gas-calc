@@ -38,7 +38,13 @@ function averageVelocity(mdot: number, rho: number, A_SI: number): number {
  * @returns Object with time and warnings
  */
 export function timeCapillaryFromAreaSI_validated(SI: any, A_SI: number): { t_SI_s: number; warnings: string[] } {
-  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, L_SI_m: L, epsilon = 0.01 } = SI;
+  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, epsilon = 0.01 } = SI;
+  const L = SI.L_SI_m ?? SI.L_m;
+  
+  // Validation de la longueur L
+  if (!Number.isFinite(L) || L <= 0) {
+    throw new Error("Invalid capillary length L");
+  }
   const { mu, R } = gas; // μ en Pa·s, L_SI en mètres
   
   const warnings: string[] = [];
