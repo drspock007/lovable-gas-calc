@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Generate DEBUG_BUNDLE.md before commit
+echo "🔄 Regenerating DEBUG_BUNDLE.md..."
+
+# Run the debug bundle generation script
+npx tsx scripts/make-debug-bundle.ts
+
+# Check if DEBUG_BUNDLE.md has changes
+if git diff --quiet DEBUG_BUNDLE.md; then
+  echo "✅ DEBUG_BUNDLE.md is up to date"
+else
+  echo "📝 DEBUG_BUNDLE.md updated, adding to commit"
+  git add DEBUG_BUNDLE.md
+fi
+
+echo "✓ Pre-commit hook completed"

@@ -60,6 +60,22 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Debug Bundle
+
+Le fichier `DEBUG_BUNDLE.md` contient une compilation de tous les fichiers clés du système de calcul pour faciliter le diagnostic. **Ce bundle est automatiquement régénéré avant chaque commit** grâce à un hook Git (Husky) pour garantir qu'il reste toujours synchronisé avec le code source.
+
+Pour régénérer manuellement le bundle :
+```sh
+npm run debug:bundle
+# ou directement
+npx tsx scripts/make-debug-bundle.ts
+```
+
+### Configuration automatique
+- **Hook pre-commit** : Régénère le bundle et l'ajoute au commit si modifié
+- **Hook commit-msg** : Affiche une notification si le bundle a été mis à jour
+- **Installation** : `npx husky install` ou `chmod +x scripts/setup-husky.sh && ./scripts/setup-husky.sh`
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/75807f96-1a75-4786-9b12-59f1f597dfa6) and click on Share -> Publish.

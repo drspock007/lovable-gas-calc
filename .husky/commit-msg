@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Check if DEBUG_BUNDLE.md was modified in this commit
+if git diff --cached --name-only | grep -q "DEBUG_BUNDLE.md"; then
+  echo "📋 DEBUG_BUNDLE.md updated automatically by pre-commit hook"
+fi
