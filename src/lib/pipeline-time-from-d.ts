@@ -49,6 +49,21 @@ export function computeTimeFromDiameter(ui: any) {
     ? timeOrificeFromAreaSI(ui.__SI__, A_SI)
     : timeCapillaryFromAreaSI(ui.__SI__, A_SI);
 
+  // Validation de t_SI - détection des calculs échoués
+  if (!Number.isFinite(t_SI)) {
+    const debugNote = { 
+      diameterRaw: raw, 
+      diameterUnit: unit, 
+      parsed, 
+      D_SI_m: D_SI, 
+      A_SI_m2: A_SI, 
+      model,
+      inputs_SI: ui.__SI__, 
+      error: "Non-finite time (check L, pressures, model)" 
+    };
+    throw { message: "Calculation failed (time is not finite)", devNote: debugNote };
+  }
+
   // Debug logging
   if (ui?.debug) {
     console.info("🔵 Time from Diameter - Pipeline:", {
