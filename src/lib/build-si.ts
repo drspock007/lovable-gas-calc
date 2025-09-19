@@ -4,23 +4,76 @@
  */
 
 import { toSI_Pressure, absFromGauge, patmFromAltitude } from "@/lib/pressure-units";
+import { toSI_Volume } from "@/lib/units";
+import { toSI_Temperature } from "@/lib/units";
+import { toSI_Length } from "@/lib/length-units";
 
-export function buildSI(ui:any){
-  const Patm = ui.patmMode==="standard" ? 101325
-    : ui.patmMode==="custom" ? toSI_Pressure(Number(String(ui.patmValue?.value ?? "101.325").replace(",", ".")), ui.patmValue?.unit ?? "kPa")
-    : patmFromAltitude(Number(ui.altitude_m ?? 0));
-  const toAbs = (s:string,u:string)=> {
-    const si = toSI_Pressure(Number(String(s).replace(",", ".")), u as any);
-    return ui.pressureInputMode==="gauge" ? absFromGauge(si, Patm) : si;
+function resolvePatm(values: any): number {
+  return values.patmMode === "standard" ? 101325
+    : values.patmMode === "custom" ? toSI_Pressure(Number(String(values.patmValue?.value ?? "101.325").replace(",", ".")), values.patmValue?.unit ?? "kPa")
+    : patmFromAltitude(Number(values.altitude_m ?? 0));
+}
+
+function toAbsSI(value: any, unit: string, mode: string, Patm: number): number {
+  const numValue = Number(String(value ?? "0").replace(",", "."));
+  const si = toSI_Pressure(numValue, unit as any);
+  return mode === "gauge" ? absFromGauge(si, Patm) : si;
+}
+
+export function buildSI(values: any) {
+  // Volume with multi-path fallbacks
+  const Vraw = values?.V?.value ?? values?.vesselVolume?.value ?? values?.volume?.value ?? values?.V;
+  const Vunit = values?.V?.unit ?? values?.vesselVolume?.unit ?? values?.volume?.unit ?? "m3";
+  const V_SI_m3 = toSI_Volume(Number(String(Vraw ?? "0").replace(",", ".")), Vunit);
+
+  // Temperature with multi-path fallbacks
+  const Traw = values?.T?.value ?? values?.temperature?.value ?? values?.T ?? values?.temp;
+  const Tunit = values?.T?.unit ?? values?.temperature?.unit ?? "C";
+  const T_K = toSI_Temperature(Number(String(Traw ?? "15").replace(",", ".")), Tunit);
+
+  // Pressures with multi-path fallbacks
+  const P1v = values?.P1?.value ?? values?.initialPressure?.value ?? values?.p1?.value ?? values?.P1;
+  const P1u = values?.P1?.unit ?? values?.initialPressure?.unit ?? values?.p1?.unit ?? values?.P1_unit ?? "kPa";
+  const P2v = values?.P2?.value ?? values?.finalPressure?.value ?? values?.p2?.value ?? values?.P2;
+  const P2u = values?.P2?.unit ?? values?.finalPressure?.unit ?? values?.p2?.unit ?? values?.P2_unit ?? "kPa";
+  const mode = values?.pressureInputMode ?? "gauge";
+  const Patm = resolvePatm(values);
+  const P1_Pa = toAbsSI(P1v, P1u, mode, Patm);
+  const P2_Pa = toAbsSI(P2v, P2u, mode, Patm);
+
+  // Length with multi-path fallbacks
+  const Lraw = values?.L?.value ?? values?.length?.value ?? values?.L_SI_m ?? values?.L_m ?? values?.orificeLength?.value;
+  const Lunit = values?.L?.unit ?? values?.length?.unit ?? "mm";
+  const L_SI_m = toSI_Length(Number(String(Lraw ?? "2").replace(",", ".")), Lunit);
+
+  // Coefficients and gas
+  const gas = values?.gas;
+  const Cd = Number(values?.Cd ?? 0.62);
+  const epsilon = Number(values?.epsilon ?? 0.01);
+  const regime = values?.regime ?? "isothermal";
+
+  const result = {
+    V_SI_m3,
+    P1_Pa,
+    P2_Pa,
+    T_K,
+    L_SI_m,
+    L_m: L_SI_m, // Backward compatibility
+    gas,
+    Cd,
+    epsilon,
+    regime
   };
-  return {
-    V_SI_m3: ui.V_SI_m3, T_K: ui.T_SI_K, 
-    L_SI_m: ui.L_SI_m ?? ui.L_m,
-    L_m: ui.L_SI_m ?? ui.L_m,
-    P1_Pa: toAbs(ui.P1.value, ui.P1.unit),
-    P2_Pa: toAbs(ui.P2.value, ui.P2.unit),
-    gas: ui.gas, Cd: ui.Cd, epsilon: ui.epsilon, regime: ui.regime
-  };
+
+  // Validation check
+  const required = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
+  for (const k of required) {
+    if (!Number.isFinite((result as any)[k])) {
+      throw new Error(`buildSI: missing or invalid ${k}`);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -29,35 +82,60 @@ export function buildSI(ui:any){
  * @param v UI values object
  * @returns SI units object with absolute pressures
  */
-export function buildAbsoluteSIFromUI(v: any) {
-  const u = v.userPressureUnit ?? "kPa";
-  
-  // Determine atmospheric pressure based on mode
-  const Patm =
-    v.patmMode === "standard"
-      ? 101_325
-      : v.patmMode === "custom"
-      ? toSI_Pressure(Number(String(v.patmValue?.value ?? "101.325").replace(",", ".")), v.patmValue?.unit ?? "kPa")
-      : patmFromAltitude(Number(v.altitude_m ?? 0));
+export function buildAbsoluteSIFromUI(values: any) {
+  // Volume with multi-path fallbacks
+  const Vraw = values?.V?.value ?? values?.vesselVolume?.value ?? values?.volume?.value ?? values?.V ?? values?.V_SI_m3;
+  const Vunit = values?.V?.unit ?? values?.vesselVolume?.unit ?? values?.volume?.unit ?? "m3";
+  const V_SI_m3 = Vraw !== undefined ? toSI_Volume(Number(String(Vraw).replace(",", ".")), Vunit) : values?.V_SI_m3;
 
-  // Helper function to convert pressure to absolute SI
-  const toAbs = (x: string, unit: string) => {
-    const z = Number(String(x).replace(",", "."));
-    const si = toSI_Pressure(z, unit as any);
-    return v.pressureInputMode === "gauge" ? absFromGauge(si, Patm) : si;
+  // Temperature with multi-path fallbacks
+  const Traw = values?.T?.value ?? values?.temperature?.value ?? values?.T ?? values?.temp ?? values?.T_SI_K;
+  const Tunit = values?.T?.unit ?? values?.temperature?.unit ?? "C";
+  const T_K = Traw !== undefined && values?.T_SI_K === undefined ? toSI_Temperature(Number(String(Traw).replace(",", ".")), Tunit) : values?.T_SI_K;
+
+  // Pressures with multi-path fallbacks
+  const P1v = values?.P1?.value ?? values?.initialPressure?.value ?? values?.p1?.value ?? values?.P1;
+  const P1u = values?.P1?.unit ?? values?.initialPressure?.unit ?? values?.p1?.unit ?? values?.P1_unit ?? "kPa";
+  const P2v = values?.P2?.value ?? values?.finalPressure?.value ?? values?.p2?.value ?? values?.P2;
+  const P2u = values?.P2?.unit ?? values?.finalPressure?.unit ?? values?.p2?.unit ?? values?.P2_unit ?? "kPa";
+  const mode = values?.pressureInputMode ?? "gauge";
+  const Patm = resolvePatm(values);
+  const P1_Pa = toAbsSI(P1v, P1u, mode, Patm);
+  const P2_Pa = toAbsSI(P2v, P2u, mode, Patm);
+  const Ps_Pa = values.process === "filling" && values.Ps ? toAbsSI(values.Ps.value, values.Ps.unit, mode, Patm) : undefined;
+
+  // Length with multi-path fallbacks
+  const Lraw = values?.L?.value ?? values?.length?.value ?? values?.L_SI_m ?? values?.L_m ?? values?.orificeLength?.value;
+  const Lunit = values?.L?.unit ?? values?.length?.unit ?? "mm";
+  const L_SI_m = toSI_Length(Number(String(Lraw ?? "2").replace(",", ".")), Lunit);
+
+  // Coefficients and gas
+  const gas = values?.gas;
+  const Cd = Number(values?.Cd ?? 0.62);
+  const epsilon = Number(values?.epsilon ?? 0.01);
+  const regime = values?.regime ?? "isothermal";
+
+  const result = {
+    V_SI_m3,
+    P1_Pa,
+    P2_Pa,
+    Ps_Pa,
+    T_K,
+    L_SI_m,
+    L_m: L_SI_m, // Backward compatibility
+    gas,
+    Cd,
+    epsilon,
+    regime
   };
 
-  return {
-    V_SI_m3: v.V_SI_m3, // suppose déjà converti côté volume
-    P1_Pa: toAbs(v.P1.value, v.P1.unit),
-    P2_Pa: toAbs(v.P2.value, v.P2.unit),
-    Ps_Pa: v.process === "filling" && v.Ps ? toAbs(v.Ps.value, v.Ps.unit) : undefined,
-    T_K: v.T_SI_K,
-    L_SI_m: v.L_SI_m ?? v.L_m,
-    L_m: v.L_SI_m ?? v.L_m,
-    gas: v.gas, 
-    Cd: v.Cd, 
-    epsilon: v.epsilon, 
-    regime: v.regime
-  };
+  // Validation check
+  const required = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
+  for (const k of required) {
+    if (!Number.isFinite((result as any)[k])) {
+      throw new Error(`buildAbsoluteSIFromUI: missing or invalid ${k}`);
+    }
+  }
+
+  return result;
 }
