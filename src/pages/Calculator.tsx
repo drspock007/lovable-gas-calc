@@ -63,7 +63,7 @@ export const Calculator: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [lastComputeInputs, setLastComputeInputs] = useState<ComputeInputs | null>(null);
   const [debugMode, setDebugMode] = useState(false);
-  const [devNote, setDevNote] = useState<string>('');
+  const [devNote, setDevNote] = useState<any>(null);
 
   // Load shared calculation from URL on mount
   useEffect(() => {
@@ -91,6 +91,7 @@ export const Calculator: React.FC = () => {
   const handleCalculate = async (expandFactor: number = 1) => {
     setLoading(true);
     setError('');
+    setDevNote(null);
 
     try {
       // Parse helper (handle string inputs with comma as decimal)
@@ -262,7 +263,7 @@ export const Calculator: React.FC = () => {
           
           // Handle debug information from computation
           if (debugMode && timeResultData.debugNote) {
-            setDevNote(JSON.stringify(timeResultData.debugNote, null, 2));
+            setDevNote(timeResultData.debugNote);
           }
           
           // Enhanced warning: Check if capillary time >> orifice time
@@ -354,24 +355,32 @@ export const Calculator: React.FC = () => {
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Calculation failed';
+      const devNote = (err as any)?.devNote ?? (err as any)?.cause?.devNote ?? null;
+      
       setError(errorMessage);
       setResults(null);
       setTimeResult(null);
       
-      // Enhanced debugging for diameter validation errors
-      if (errorMessage.includes('Invalid diameter') && inputValues.debug) {
+      // Always set devNote for better debugging (especially when debug=ON)
+      if (devNote) {
+        setDevNote(devNote);
+      } else if (debugMode) {
+        // Fallback debug info when no devNote available
         const { parseDecimalLoose } = await import('@/lib/num-parse');
         const { toSI_Length } = await import('@/lib/length-units');
         
-        const dbg = {
+        const fallbackDbg = {
           diameterRaw: inputValues.D,
           diameterUnit: inputValues.D_unit,
           parsed: parseDecimalLoose(inputValues.D),
           D_SI: toSI_Length(parseDecimalLoose(inputValues.D || 0), inputValues.D_unit),
+          errorMessage,
+          timestamp: new Date().toISOString()
         };
-        console.warn("[TimeFromD ERROR]", dbg, err);
-        setDevNote(JSON.stringify(dbg, null, 2)); // petit bloc dans Dev Panel
+        setDevNote(fallbackDbg);
       }
+      
+      console.warn("[TimeFromD ERROR]", { errorMessage, devNote }, err);
       
       toast({
         title: "Calculation Error",
@@ -654,12 +663,13 @@ export const Calculator: React.FC = () => {
                 loading={loading}
               />
               
-              {solveFor === 'TfromD' && timeResult ? (
+              {solveFor === 'TfromD' ? (
                 <ResultsTimeFromD 
                   result={timeResult} 
-                  unitTime="s" 
-                  debug={debugMode} 
+                  error={error ? { message: error } : null}
                   devNote={devNote}
+                  unitTime="s" 
+                  computeDisabledReason={error ? "Calculation failed" : null}
                 />
               ) : (
                 <ResultsCard 
