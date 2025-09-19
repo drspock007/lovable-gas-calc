@@ -1,6 +1,6 @@
 # Lovable Gas Calc — DEBUG_BUNDLE
 
-**Generated:** 2025-01-18 16:42:00 (Local Time)  
+**Generated:** 2025-01-19 17:30:00 (Local Time)  
 **Branch:** main  
 **Commit:** HEAD  
 **Warning:** Generated for diagnosis — do not edit manually.
@@ -93,7 +93,9 @@ export function buildSI(ui:any){
     return ui.pressureInputMode==="gauge" ? absFromGauge(si, Patm) : si;
   };
   return {
-    V_SI_m3: ui.V_SI_m3, T_K: ui.T_SI_K, L_m: ui.L_SI_m,
+    V_SI_m3: ui.V_SI_m3, T_K: ui.T_SI_K, 
+    L_SI_m: ui.L_SI_m ?? ui.L_m,
+    L_m: ui.L_SI_m ?? ui.L_m,
     P1_Pa: toAbs(ui.P1.value, ui.P1.unit),
     P2_Pa: toAbs(ui.P2.value, ui.P2.unit),
     gas: ui.gas, Cd: ui.Cd, epsilon: ui.epsilon, regime: ui.regime
@@ -130,7 +132,8 @@ export function buildAbsoluteSIFromUI(v: any) {
     P2_Pa: toAbs(v.P2.value, v.P2.unit),
     Ps_Pa: v.process === "filling" && v.Ps ? toAbs(v.Ps.value, v.Ps.unit) : undefined,
     T_K: v.T_SI_K,
-    L_SI_m: v.L_SI_m,
+    L_SI_m: v.L_SI_m ?? v.L_m,
+    L_m: v.L_SI_m ?? v.L_m,
     gas: v.gas, 
     Cd: v.Cd, 
     epsilon: v.epsilon, 
@@ -426,8 +429,8 @@ function averageVelocity(mdot: number, rho: number, A_SI: number): number {
  * @returns Object with time and warnings
  */
 export function timeCapillaryFromAreaSI_validated(SI: any, A_SI: number): { t_SI_s: number; warnings: string[] } {
-  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, L_SI_m: L, epsilon = 0.01 } = SI;
-  const { mu, R } = gas; // μ en Pa·s, L_SI en mètres
+  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, epsilon = 0.01 } = SI;
+  const L = SI.L_SI_m ?? SI.L_m;
   
   const warnings: string[] = [];
   
@@ -573,6 +576,21 @@ export function computeTimeFromDiameter(ui: any) {
     ? timeOrificeFromAreaSI(ui.__SI__, A_SI)
     : timeCapillaryFromAreaSI(ui.__SI__, A_SI);
 
+  // Validation de t_SI - détection des calculs échoués
+  if (!Number.isFinite(t_SI)) {
+    const debugNote = { 
+      diameterRaw: raw, 
+      diameterUnit: unit, 
+      parsed, 
+      D_SI_m: D_SI, 
+      A_SI_m2: A_SI, 
+      model,
+      inputs_SI: ui.__SI__, 
+      error: "Non-finite time (check L, pressures, model)" 
+    };
+    throw { message: "Calculation failed (time is not finite)", devNote: debugNote };
+  }
+
   // Debug logging
   if (ui?.debug) {
     console.info("🔵 Time from Diameter - Pipeline:", {
@@ -647,18 +665,47 @@ export async function computeTimeFromD(ui: any) {
 import { Card } from "@/components/ui/card";
 import DevDump from "@/components/DevDump";
 
-export function ResultsTimeFromD({ result, devNote, unitTime="s" }: any) {
+import { Card } from "@/components/ui/card";
+import DevDump from "@/components/DevDump";
+import { useDebug } from "@/lib/debug-context";
+
+export function ResultsTimeFromD({ result, error, devNote, unitTime="s", computeDisabledReason }: any) {
+  const { debug } = useDebug();
   const t = result?.t_SI_s;
   const shown = unitTime==="s" ? t : unitTime==="min" ? t/60 : t/3600;
+  
   return (
     <>
       <section className="card p-4">
-        <div className="text-2xl font-bold">{Number.isFinite(shown) ? shown.toFixed(3) : "—"} {unitTime}</div>
-        {result?.model && (
-          <div className="text-sm text-muted-foreground mt-1">Model: {result.model}</div>
+        {Number.isFinite(shown) ? (
+          <>
+            <div className="text-2xl font-bold">{shown.toFixed(3)} {unitTime}</div>
+            {result?.model && (
+              <div className="text-sm text-muted-foreground mt-1">Model: {result.model}</div>
+            )}
+          </>
+        ) : (
+          <div className="text-red-600">
+            <div className="text-lg font-semibold">Calculation failed</div>
+            <div className="text-sm mt-1">Check input parameters and debug information below</div>
+          </div>
+        )}
+        
+        {/* Debug info for disabled compute button */}
+        {debug && computeDisabledReason && (
+          <div className="text-xs text-muted-foreground mt-2 border-t pt-2">
+            disabled=true · reason={computeDisabledReason}
+          </div>
         )}
       </section>
-      <DevDump title="Time-from-D Debug" note={devNote ?? result?.debugNote} />
+      
+      {/* DevDump - Always shown when debug is ON, regardless of success/failure */}
+      {debug && (
+        <DevDump 
+          title="Time-from-D Debug" 
+          note={result?.debugNote ?? error?.devNote ?? devNote} 
+        />
+      )}
     </>
   );
 }
@@ -801,4 +848,4 @@ export type FormData = z.infer<typeof formSchema>;
 **End of DEBUG_BUNDLE.md**  
 **Total sections:** 11  
 **Missing files:** None  
-**Generation complete:** 2025-01-18 16:42:00
+**Generation complete:** 2025-01-19 17:30:00
