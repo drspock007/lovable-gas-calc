@@ -1,6 +1,6 @@
 # Lovable Gas Calc — DEBUG_BUNDLE
 
-**Generated:** 2025-01-19 17:30:00 (Local Time)  
+**Generated:** 2025-01-19 20:45:00 (Local Time)  
 **Branch:** main  
 **Commit:** HEAD  
 **Warning:** Generated for diagnosis — do not edit manually.
@@ -432,6 +432,12 @@ export function timeCapillaryFromAreaSI_validated(SI: any, A_SI: number): { t_SI
   const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, epsilon = 0.01 } = SI;
   const L = SI.L_SI_m ?? SI.L_m;
   
+  // Validation de la longueur L
+  if (!Number.isFinite(L) || L <= 0) {
+    throw new Error("Invalid capillary length L");
+  }
+  const { mu, R } = gas; // μ en Pa·s, L_SI en mètres
+  
   const warnings: string[] = [];
   
   // CRITICAL: Diameter MUST be in SI (meters) before 4th power
@@ -848,4 +854,12 @@ export type FormData = z.infer<typeof formSchema>;
 **End of DEBUG_BUNDLE.md**  
 **Total sections:** 11  
 **Missing files:** None  
-**Generation complete:** 2025-01-19 17:30:00
+**Generation complete:** 2025-01-19 20:45:00
+
+**Recent Changes:**
+- ✅ Debug system avec localStorage persistence et DevDump conditionnel
+- ✅ L harmonization: buildSI expose L_SI_m et L_m avec même valeur
+- ✅ Validation capillaire: throw "Invalid capillary length L" si L manquant/≤0
+- ✅ Pipeline timeFromD: validation NaN avec devNote détaillé
+- ✅ Tests d'acceptance ajoutés pour build-si, capillary validation, orifice-gio
+- ✅ timeCapillaryFromAreaSI unifié avec lecture `L = SI.L_SI_m ?? SI.L_m`
