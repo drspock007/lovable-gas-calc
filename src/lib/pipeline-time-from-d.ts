@@ -5,6 +5,15 @@ import { timeOrificeFromAreaSI, timeCapillaryFromAreaSI } from "@/lib/physics";
 import { checkDiameterVsVolume, formatVolumeCheckDebug } from '@/lib/diameter-volume-check';
 
 export function computeTimeFromDiameter(ui: any) {
+  const SI = ui?.__SI__;
+  
+  // Validate required SI inputs before entering physics
+  const must = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
+  const missing = must.filter(k => !Number.isFinite(SI?.[k]));
+  if (missing.length) {
+    throw { message: "Inputs missing: " + missing.join(","), devNote: { inputs_SI: SI } };
+  }
+
   const raw = ui?.diameter;
   const unit = ui?.diameterUnit;
   const parsed = parseDecimalLoose(raw);
