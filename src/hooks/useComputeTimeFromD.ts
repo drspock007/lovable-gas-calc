@@ -16,7 +16,7 @@ export function useComputeTimeFromD(values: any) {
       const res = computeTimeFromDiameter({
         ...values,
         __SI__: SI,
-        modelOverride: values.modelSelection ?? values.model,
+        model: values.modelSelection ?? values.model,
         debug,
       });
       setResult(res);

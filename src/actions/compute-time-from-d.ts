@@ -13,7 +13,12 @@ import { computeTimeFromDiameter } from "@/lib/pipeline-time-from-d";
  */
 export async function computeTimeFromD(ui: any) {
   const SI = buildSI(ui);
-  const res = computeTimeFromDiameter({ ...ui, __SI__: SI, modelOverride: ui.modelSelection, debug: ui.debug });
+  const res = computeTimeFromDiameter({ 
+    ...ui, 
+    __SI__: SI, 
+    model: ui.modelSelection ?? ui.model, 
+    debug: ui.debug 
+  });
   
   // Optional: residual (replay t(A*)) for transparency  
   const t_check = res.t_SI_s; // same engine, so equal here
