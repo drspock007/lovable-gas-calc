@@ -12,6 +12,9 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
   const t = result?.t_SI_s;
   const shown = unitTime==="s" ? t : unitTime==="min" ? t/60 : t/3600;
   
+  // Unified devNote - prioritize result debugNote, then devNote prop, then error devNote
+  const note = result?.debugNote ?? devNote ?? error?.devNote ?? null;
+  
   return (
     <>
       <section className="card p-4">
@@ -25,7 +28,9 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
         ) : (
           <div className="text-red-600">
             <div className="text-lg font-semibold">Calculation failed</div>
-            <div className="text-sm mt-1">Check input parameters and debug information below</div>
+            <div className="text-sm mt-1">
+              {error?.message || "Check input parameters and debug information below"}
+            </div>
           </div>
         )}
         
@@ -37,11 +42,11 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
         )}
       </section>
       
-      {/* DevDump - Always shown when debug is ON, regardless of success/failure */}
-      {debug && (
+      {/* DevDump - Always shown when debug is ON and note exists, regardless of success/failure */}
+      {debug && note && (
         <DevDump 
           title="Time-from-D Debug" 
-          note={result?.debugNote ?? error?.devNote ?? devNote} 
+          note={note} 
         />
       )}
     </>
