@@ -1873,7 +1873,14 @@ export function timeOrificeFromAreaSI_legacy(inputs: ComputeInputs, A_SI_m2: num
  * @returns Time [s]
  */
 export function timeCapillaryFromAreaSI(SI: any, A_SI: number): number {
-  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, L_SI_m: L, epsilon = 0.01 } = SI;
+  const { V_SI_m3: V, P1_Pa: P1, P2_Pa: P2, T_K: T, gas, epsilon = 0.01 } = SI;
+  const L = SI.L_SI_m ?? SI.L_m;
+  
+  // Validation de la longueur L
+  if (!Number.isFinite(L) || L <= 0) {
+    throw new Error("Invalid capillary length L");
+  }
+  
   const { mu } = gas; // Viscosity needed for capillary flow
   
   // Capillary flow uses Poiseuille equation with appropriate pressure integration
