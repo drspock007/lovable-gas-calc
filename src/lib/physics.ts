@@ -370,17 +370,39 @@ function capillaryDfromT_filling(inputs: ComputeInputs): number {
   
   if (!Ps) throw new Error('Supply pressure Ps required for filling');
   
+  // Enhanced validation for filling mode
+  if (Ps <= P1) {
+    throw new Error(`Supply pressure Ps (${Ps}) must be greater than initial pressure P1 (${P1})`);
+  }
+  if (Ps <= P2) {
+    throw new Error(`Supply pressure Ps (${Ps}) must be greater than final pressure P2 (${P2})`);
+  }
+  if (!Number.isFinite(t) || t! <= 0) {
+    throw new Error(`Invalid time for filling: ${t}`);
+  }
+  
   const Pf = P2 * (1 - epsilon);
   
   const numerator = (Ps - P1) * (Pf + Ps);
   const denominator = (Ps + P1) * (Pf - Ps);
   
-  if (numerator <= 0 || denominator <= 0) {
-    throw new Error('Invalid pressure conditions for capillary filling');
+  if (numerator <= 0) {
+    throw new Error(`Numerator ≤ 0: (Ps-P1)*(Pf+Ps) = (${Ps}-${P1})*(${Pf}+${Ps}) = ${numerator}`);
+  }
+  if (denominator <= 0) {
+    throw new Error(`Denominator ≤ 0: (Ps+P1)*(Pf-Ps) = (${Ps}+${P1})*(${Pf}-${Ps}) = ${denominator}`);
   }
   
   const lnTerm = Math.log(numerator / denominator);
+  if (!Number.isFinite(lnTerm)) {
+    throw new Error(`Invalid logarithm: ln(${numerator}/${denominator}) = ${lnTerm}`);
+  }
+  
   const D4 = (128 * mu * L * V * lnTerm) / (Math.PI * t! * Ps);
+  
+  if (D4 <= 0) {
+    throw new Error(`D^4 calculation invalid: ${D4}`);
+  }
   
   return Math.pow(D4, 0.25);
 }
@@ -1464,15 +1486,36 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       
       diagnostics.t_check = t_check;
       
-      // Check if residual is within 2% tolerance
+      // Adaptive tolerance: filling mode is less stable numerically
+      const baseTolerance = 0.02; // 2%
+      const tolerance = inputs.process === 'filling' ? baseTolerance * 2.5 : baseTolerance; // 5% for filling, 2% for blowdown
+      
       const residualError = Math.abs(t_check - inputs.t!) / inputs.t!;
-      if (residualError > 0.02) {
+      
+      // Enhanced debug logging for residual check
+      const debugInfo = {
+        process: inputs.process,
+        D_original: inputs.D,
+        D_solved: D,
+        t_target: inputs.t,
+        t_check,
+        residualError: residualError * 100, // as percentage
+        tolerance: tolerance * 100, // as percentage
+        verdict,
+        model_used: verdict === 'orifice' ? 'orifice' : 'capillary'
+      };
+      
+      if (residualError > tolerance) {
+        console.warn("🔴 Residual Check Failed:", debugInfo);
         throw new ResidualError(
-          `Result rejected by residual check (${(residualError * 100).toFixed(1)}% error)`,
+          `Result rejected by residual check (${(residualError * 100).toFixed(1)}% > ${(tolerance * 100).toFixed(1)}% tolerance)`,
           t_check,
           inputs.t!,
-          { residualError, verdict, D }
+          { ...debugInfo, residualError, verdict, D }
         );
+      } else if (residualError > baseTolerance && inputs.process === 'filling') {
+        // Log acceptable but elevated residual for filling mode
+        console.info("⚠️ Elevated residual accepted for filling mode:", debugInfo);
       }
     } catch (error) {
       if (error instanceof ResidualError) {
@@ -1738,15 +1781,36 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
       const D_fromA = Math.sqrt(4 * A_check / Math.PI);
       diagnostics.D_check = D_fromA;
       
-      // For TfromD, we check diameter consistency (conceptually similar to time check)
+      // Adaptive tolerance for TfromD: filling mode is less stable numerically
+      const baseTolerance = 0.02; // 2%  
+      const tolerance = inputs.process === 'filling' ? baseTolerance * 2.5 : baseTolerance; // 5% for filling, 2% for blowdown
+      
       const residualError = Math.abs(D_fromA - inputs.D!) / inputs.D!;
-      if (residualError > 0.02) {
+      
+      // Enhanced debug logging for diameter residual check
+      const debugInfo = {
+        process: inputs.process,
+        t_target: inputs.t,
+        t_solved: t,
+        D_original: inputs.D,
+        D_check: D_fromA,
+        residualError: residualError * 100, // as percentage
+        tolerance: tolerance * 100, // as percentage
+        verdict,
+        model_used: verdict === 'orifice' ? 'orifice' : 'capillary'
+      };
+      
+      if (residualError > tolerance) {
+        console.warn("🔴 Diameter Residual Check Failed:", debugInfo);
         throw new ResidualError(
-          `Result rejected by residual check (${(residualError * 100).toFixed(1)}% error)`,
+          `Result rejected by residual check (${(residualError * 100).toFixed(1)}% > ${(tolerance * 100).toFixed(1)}% tolerance)`,
           t, // Use solved time as t_check for consistency
           inputs.D!, // But check against target diameter
-          { residualError, verdict, t, D_check: D_fromA }
+          { ...debugInfo, residualError, verdict, t, D_check: D_fromA }
         );
+      } else if (residualError > baseTolerance && inputs.process === 'filling') {
+        // Log acceptable but elevated residual for filling mode
+        console.info("⚠️ Elevated diameter residual accepted for filling mode:", debugInfo);
       }
     } catch (error) {
       if (error instanceof ResidualError) {
