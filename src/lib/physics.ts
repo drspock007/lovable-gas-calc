@@ -6,6 +6,8 @@
 
 import { brent } from './rootfind';
 import { timeCapillaryFromAreaSI_validated } from './physics-capillary';
+import { parseDecimalLoose } from './num-parse';
+import { toSI_Time } from './units';
 
 /**
  * Gas properties at 20°C (293.15 K)
@@ -1223,6 +1225,22 @@ function generateWarnings(diagnostics: Record<string, number | string | boolean>
  */
 export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
   try {
+    // Parse and validate target time with strict guards
+    const tRaw = inputs?.t;
+    const tUnit = 's'; // Default unit for now, could be extended for UI inputs
+    
+    // Parse target time with tolerance (replace comma by point, trim)
+    const parsed = parseDecimalLoose(tRaw);
+    const t_target_SI = toSI_Time(parsed, 's');
+    
+    // Guard: prevent fallback on invalid time
+    if (!Number.isFinite(t_target_SI) || t_target_SI <= 0) {
+      throw { message: "Invalid target time", devNote: { tRaw, tUnit, parsed, t_target_SI, error: "NaN, infinite, or ≤0" } };
+    }
+    
+    // Update inputs with validated time
+    const validatedInputs = { ...inputs, t: t_target_SI };
+    
     let D_capillary: number | undefined;
     let D_orifice: number | undefined;
     const warnings: string[] = [];
@@ -1230,14 +1248,14 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     let orifice_error: string | undefined;
     
     // Check if model is forced via modelSelection
-    const forcedModel = inputs.modelSelection;
+    const forcedModel = validatedInputs.modelSelection;
     
     // 1) Compute D_cap via capillary model
     try {
-      if (inputs.process === 'blowdown') {
-        D_capillary = capillaryDfromT_blowdown(inputs);
+      if (validatedInputs.process === 'blowdown') {
+        D_capillary = capillaryDfromT_blowdown(validatedInputs);
       } else {
-        D_capillary = capillaryDfromT_filling(inputs);
+        D_capillary = capillaryDfromT_filling(validatedInputs);
       }
     } catch (error) {
       capillary_error = `Capillary model failed: ${(error as Error).message}`;
@@ -1250,19 +1268,19 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     
     try {
       // Try isothermal solver first if regime is isothermal or default
-      if (inputs.regime !== 'adiabatic') {
+      if (validatedInputs.regime !== 'adiabatic') {
         try {
-          const isothermalResult = solveOrifice_DfromT_isothermal(inputs);
+          const isothermalResult = solveOrifice_DfromT_isothermal(validatedInputs);
           D_orifice = isothermalResult.D_SI_m;
           
           // Check if flow is choked and monotonic for smart switching decision
           if (D_orifice) {
-            const testDiag = calculateDiagnostics(inputs, D_orifice);
+            const testDiag = calculateDiagnostics(validatedInputs, D_orifice);
             const isChoked = testDiag.choked as boolean;
             
             // Sample to check monotonicity
             try {
-              const sampleResult = sample_tA(inputs, 'orifice', 1e-12, 1e-8, 5);
+              const sampleResult = sample_tA(validatedInputs, 'orifice', 1e-12, 1e-8, 5);
               const isMonotonic = sampleResult.samples.length >= 2 && 
                 sampleResult.samples.every((s, i, arr) => i === 0 || s.t_s < arr[i-1].t_s);
               
