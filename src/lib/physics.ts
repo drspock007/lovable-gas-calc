@@ -804,7 +804,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     return t_calc - t_target;
   };
   
-  // Define time function for sampling
+  // Define time function for sampling and inclusion tests
   const timeFunction = (A: number): number => {
     const D = Math.sqrt(4 * A / Math.PI);
     const testInputs = { ...inputs, D };
@@ -829,42 +829,64 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     A_hi = 1e-2;  // Large area (D ≈ 112.8 mm)
   }
   
-  // Auto-expand bracket up to 12 times
+  // Test inclusion and auto-expand based on time range
   let expansions = 0;
-  const maxExpansions = 12;
+  const maxExpansions = 4; // Max 4 expansions as requested
+  const maxPhysicalA = 1e-1; // Physical upper bound (D ≈ 356 mm)
   
   while (expansions < maxExpansions) {
     try {
-      const f_lo = objectiveFunction(A_lo);
-      const f_hi = objectiveFunction(A_hi);
+      // Calculate times at bracket endpoints (assuming t decreases with A)
+      const t_lo = timeFunction(A_lo);
+      const t_hi = timeFunction(A_hi);
       
-      // Check if we have proper bracketing
-      if (f_lo * f_hi < 0) {
-        break; // We have a bracket
+      // Test inclusion: t_target should be in [t_hi, t_lo] (t decreases with A)
+      if (t_target > t_lo || t_target < t_hi) {
+        // Target time is outside bracket, need to expand
+        if (t_target > t_lo) {
+          A_lo /= 10; // Need smaller A (larger time)
+        }
+        if (t_target < t_hi) {
+          A_hi = Math.min(A_hi * 10, maxPhysicalA); // Need larger A (smaller time), but respect physical limit
+        }
+        expansions++;
+        console.log(`Expansion ${expansions}: t_target=${t_target}s not in [${t_hi}s, ${t_lo}s], expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
+      } else {
+        // Target time is included in bracket
+        console.log(`Target time ${t_target}s is included in [${t_hi}s, ${t_lo}s], proceeding with solving`);
+        break;
       }
-      
-      // Expand bracket
-      if (f_lo < 0) {
-        A_lo /= 10;
-      }
-      if (f_hi > 0) {
-        A_hi *= 10;
-      }
-      
-      expansions++;
     } catch (error) {
       // If evaluation fails, try expanding
       A_lo /= 10;
-      A_hi *= 10;
+      A_hi = Math.min(A_hi * 10, maxPhysicalA);
       expansions++;
+      console.log(`Expansion ${expansions}: evaluation failed, expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
     }
   }
   
   if (expansions >= maxExpansions) {
-    throw new BracketError(
-      `Solver could not bracket the solution after ${maxExpansions} expansions`,
-      { A_lo, A_hi, expansions, t_target }
-    );
+    // Final inclusion test for error message
+    try {
+      const t_lo = timeFunction(A_lo);
+      const t_hi = timeFunction(A_hi);
+      throw { 
+        message: "Target time out of bracket", 
+        devNote: { 
+          t_target_SI: t_target, 
+          t_lo, 
+          t_hi, 
+          bracket: { A_lo, A_hi },
+          expansions,
+          max_expansions: maxExpansions
+        } 
+      };
+    } catch (evalError) {
+      throw new BracketError(
+        `Solver could not bracket the solution after ${maxExpansions} expansions`,
+        { A_lo, A_hi, expansions, t_target }
+      );
+    }
   }
 
   // Sample t(A) at 5 log-spaced points for debugging
@@ -934,6 +956,51 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
       'Root finding failed to converge - solver could not bracket the solution',
       { A_lo, A_hi, method: 'Brent', t_target }
     );
+  }
+  
+  // Check if solution is at boundary (prevent returning exact A_lo/A_hi)
+  const tolerance = 1e-10; // Very small tolerance for boundary detection
+  const relativeToleranceA = 1e-6; // Relative tolerance (0.0001%)
+  
+  if (Math.abs(A_solution - A_lo) < tolerance || 
+      Math.abs(A_solution - A_hi) < tolerance ||
+      Math.abs(A_solution - A_lo) / A_lo < relativeToleranceA ||
+      Math.abs(A_solution - A_hi) / A_hi < relativeToleranceA) {
+    
+    // Solution is too close to boundary
+    const t_lo = timeFunction(A_lo);
+    const t_hi = timeFunction(A_hi);
+    throw { 
+      message: "Target time out of bracket", 
+      devNote: { 
+        t_target_SI: t_target, 
+        t_lo, 
+        t_hi, 
+        bracket: { A_lo, A_hi },
+        A_solution,
+        boundary_reached: true,
+        expansions
+      } 
+    };
+  }
+  
+  // Verify residual time tolerance
+  const t_computed = timeFunction(A_solution);
+  const residual_time = Math.abs(t_computed - t_target) / Math.max(t_target, 1e-9);
+  const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
+  
+  if (residual_time > epsilon_threshold) {
+    throw { 
+      message: "Time residual too large", 
+      devNote: { 
+        t_target_SI: t_target, 
+        t_computed,
+        residual_time,
+        epsilon_threshold,
+        A_solution,
+        bracket: { A_lo, A_hi }
+      } 
+    };
   }
   
   // Save successful bracket for future use
