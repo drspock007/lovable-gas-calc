@@ -7,7 +7,7 @@
 import { brent } from './rootfind';
 import { timeCapillaryFromAreaSI_validated } from './physics-capillary';
 import { parseDecimalLoose } from './num-parse';
-import { toSI_Time } from './units';
+import { toSI_Time, type TimeUnit } from './units';
 
 /**
  * Gas properties at 20°C (293.15 K)
@@ -1315,17 +1315,15 @@ function generateWarnings(diagnostics: Record<string, number | string | boolean>
  */
 export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
   try {
-    // Parse and validate target time with strict guards
-    const tRaw = inputs?.t;
-    const tUnit = 's'; // Default unit for now, could be extended for UI inputs
-    
-    // Parse target time with tolerance (replace comma by point, trim)
-    const parsed = parseDecimalLoose(tRaw);
-    const t_target_SI = toSI_Time(parsed, 's');
+    // Robust target time reading - compatible with current interface but extensible
+    const raw = inputs?.t; // For now, read from 't' field since that's what ComputeInputs has
+    const unit = "s"; // Default unit, could be extended later for UI inputs with unit selection
+    const parsed = Number(String(raw).replace(",", ".").trim());
+    const t_target_SI = toSI_Time(parsed, unit as TimeUnit);
     
     // Guard: prevent fallback on invalid time
     if (!Number.isFinite(t_target_SI) || t_target_SI <= 0) {
-      throw { message: "Invalid target time", devNote: { tRaw, tUnit, parsed, t_target_SI, error: "NaN, infinite, or ≤0" } };
+      throw { message: "Invalid target time", devNote: { raw, unit, parsed, t_target_SI, error: "NaN, infinite, or ≤0" } };
     }
     
     // Update inputs with validated time
@@ -1670,7 +1668,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
             model: verdict === 'orifice' ? 'orifice' : 'capillary',
             epsilon_used: epsilon_verify,
             residual: finalResidual,
-            t_target: validatedInputs.t!,
+            t_target_s: t_target_SI,
             t_forward: t_forward,
             A_candidate_SI_m2: A_candidate,
             D_candidate_SI_m: D,

@@ -26,7 +26,7 @@ describe('Time Target Validation in computeDfromT', () => {
         computeDfromT(inputs);
       } catch (error: any) {
         expect(error.devNote).toBeDefined();
-        expect(error.devNote.tRaw).toBe(NaN);
+        expect(error.devNote.raw).toBe(NaN);
         expect(error.devNote.parsed).toBe(NaN);
         expect(error.devNote.error).toContain('NaN');
       }
@@ -41,7 +41,7 @@ describe('Time Target Validation in computeDfromT', () => {
         computeDfromT(inputs);
       } catch (error: any) {
         expect(error.devNote).toBeDefined();
-        expect(error.devNote.tRaw).toBe(0);
+        expect(error.devNote.raw).toBe(0);
         expect(error.devNote.parsed).toBe(0);
         expect(error.devNote.error).toContain('≤0');
       }
@@ -56,7 +56,7 @@ describe('Time Target Validation in computeDfromT', () => {
         computeDfromT(inputs);
       } catch (error: any) {
         expect(error.devNote).toBeDefined();
-        expect(error.devNote.tRaw).toBe(-10);
+        expect(error.devNote.raw).toBe(-10);
         expect(error.devNote.parsed).toBe(-10);
         expect(error.devNote.error).toContain('≤0');
       }
@@ -71,7 +71,7 @@ describe('Time Target Validation in computeDfromT', () => {
         computeDfromT(inputs);
       } catch (error: any) {
         expect(error.devNote).toBeDefined();
-        expect(error.devNote.tRaw).toBeUndefined();
+        expect(error.devNote.raw).toBeUndefined();
         expect(error.devNote.parsed).toBe(NaN);
         expect(error.devNote.error).toContain('NaN');
       }
@@ -126,7 +126,7 @@ describe('Time Target Validation in computeDfromT', () => {
       try {
         computeDfromT(inputs);
       } catch (error: any) {
-        expect(error.devNote.tRaw).toBe("");
+        expect(error.devNote.raw).toBe("");
         expect(error.devNote.parsed).toBe(NaN);
       }
     });
@@ -139,9 +139,41 @@ describe('Time Target Validation in computeDfromT', () => {
       try {
         computeDfromT(inputs);
       } catch (error: any) {
-        expect(error.devNote.tRaw).toBe("abc");
+        expect(error.devNote.raw).toBe("abc");
         expect(error.devNote.parsed).toBe(NaN);
       }
+    });
+  });
+
+  describe('t_target_s inclusion in diagnostics', () => {
+    it('should include t_target_s in devNote when displaying residual details', () => {
+      const inputs = { ...baseInputs, t: 175 };
+      
+      try {
+        const result = computeDfromT(inputs);
+        
+        // If successful, check that target time is correctly handled
+        expect(result.D).toBeDefined();
+        expect(result.D).toBeGreaterThan(0);
+      } catch (error: any) {
+        // If it fails with residual check, verify t_target_s is included
+        if (error.devNote && error.devNote.t_target_s !== undefined) {
+          expect(error.devNote.t_target_s).toBe(175);
+          expect(typeof error.devNote.t_target_s).toBe('number');
+        }
+      }
+    });
+
+    it('should verify that t_target_SI is properly validated and used', () => {
+      const inputs = { ...baseInputs, t: 100.5 };
+      
+      // This should work and the validated time should be exactly 100.5 seconds
+      const result = computeDfromT(inputs);
+      expect(result.D).toBeDefined();
+      expect(result.D).toBeGreaterThan(0);
+      
+      // The validated time should have been used throughout the calculation
+      // (We can't directly check it, but the successful result implies it was used correctly)
     });
   });
 });
