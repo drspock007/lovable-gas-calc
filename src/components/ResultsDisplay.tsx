@@ -5,6 +5,7 @@ import { CheckCircle, AlertTriangle, Info } from 'lucide-react';
 import { useI18n } from '@/i18n/context';
 import { ComputeOutputs } from '@/lib/physics';
 import { UnitSystem, convertFromSI } from '@/lib/units';
+import { formatTimeDisplay } from '@/lib/time-format';
 import { SolveForType } from './ModeSelector';
 
 interface ResultsDisplayProps {
@@ -75,16 +76,20 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
           </div>
         )}
 
-        {solveFor === 'TfromD' && results.t && (
-          <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
-            <h3 className="font-semibold text-primary mb-2">
-              {t('transferTime')}
-            </h3>
-            <p className="text-2xl font-bold gradient-text">
-              {convertFromSI.time(results.t, units.time).toFixed(1)} {t(`units.${units.time}`)}
-            </p>
-          </div>
-        )}
+        {solveFor === 'TfromD' && results.t && (() => {
+          // Use the better time formatting instead of convertFromSI
+          const timeDisplay = formatTimeDisplay(results.t, 3);
+          return (
+            <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+              <h3 className="font-semibold text-primary mb-2">
+                {t('transferTime')}
+              </h3>
+              <p className="text-2xl font-bold gradient-text">
+                {timeDisplay.t_display} {timeDisplay.time_unit_used}
+              </p>
+            </div>
+          );
+        })()}
 
         {/* Additional Results */}
         <div className="grid grid-cols-1 gap-3">

@@ -6,12 +6,15 @@
 import { Card } from "@/components/ui/card";
 import DevDump from "@/components/DevDump";
 import { ResidualDetails } from "@/components/ResidualDetails";
+import { formatTimeDisplay } from "@/lib/time-format";
 import { useDebug } from "@/lib/debug-context";
 
 export function ResultsTimeFromD({ result, error, devNote, unitTime="s", computeDisabledReason }: any) {
   const { debug } = useDebug();
   const t = result?.t_SI_s;
-  const shown = unitTime==="s" ? t : unitTime==="min" ? t/60 : t/3600;
+  
+  // Use smart time formatting instead of manual conversion
+  const timeDisplay = t ? formatTimeDisplay(t, 3) : null;
   
   // Unified devNote - prioritize result debugNote, then devNote prop, then error devNote
   const note = result?.debugNote ?? devNote ?? error?.devNote ?? null;
@@ -19,9 +22,9 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
   return (
     <>
       <section className="card p-4">
-        {Number.isFinite(shown) ? (
+        {timeDisplay && Number.isFinite(timeDisplay.raw_value) ? (
           <>
-            <div className="text-2xl font-bold">{shown.toFixed(3)} {unitTime}</div>
+            <div className="text-2xl font-bold">{timeDisplay.t_display} {timeDisplay.time_unit_used}</div>
             {result?.model && (
               <div className="text-sm text-muted-foreground mt-1">Model: {result.model}</div>
             )}
@@ -36,7 +39,7 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
         )}
         
         {/* Residual Details Panel - Show when error has devNote */}
-        {!Number.isFinite(shown) && (error?.devNote || devNote) && (
+        {(!timeDisplay || !Number.isFinite(timeDisplay.raw_value)) && (error?.devNote || devNote) && (
           <ResidualDetails 
             devNote={error?.devNote || devNote} 
           />

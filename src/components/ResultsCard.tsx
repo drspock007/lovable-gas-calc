@@ -10,6 +10,7 @@ import { ComputeOutputs, ComputeInputs, BracketError, IntegralError, ResidualErr
 import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
 import { formatLength, LengthUnit, LENGTH_LABEL, toSI_Length } from '@/lib/length-units';
+import { formatTimeDisplay } from '@/lib/time-format';
 import DevDump from '@/components/DevDump';
 import { ResidualDetails } from '@/components/ResidualDetails';
 
@@ -156,7 +157,10 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
       `Gas Transfer Calculation Results`,
       `Model: ${results.verdict}`,
       D_SI_m ? `Diameter: ${formatLength(D_SI_m, userLengthUnit)} ${LENGTH_LABEL[userLengthUnit]}` : '',
-      t_SI_s ? `Time: ${t_SI_s.toFixed(1)} s` : '',
+      t_SI_s ? (() => {
+        const timeDisplay = formatTimeDisplay(t_SI_s, 3);
+        return `Time: ${timeDisplay.t_display} ${timeDisplay.time_unit_used}`;
+      })() : '',
       results.diagnostics.rationale ? `Rationale: ${results.diagnostics.rationale}` : '',
     ].filter(Boolean);
     
@@ -290,19 +294,25 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
                 {t('orificeDiameter')}: {formatLength(D_SI_m, userLengthUnit)} {LENGTH_LABEL[userLengthUnit]}
               </p>
             )}
-            {t_SI_s && (
-              <p className="text-2xl font-bold gradient-text">
-                {t('transferTime')}: {t_SI_s.toFixed(1)} s
-              </p>
-            )}
+            {t_SI_s && (() => {
+              const timeDisplay = formatTimeDisplay(t_SI_s, 3);
+              return (
+                <p className="text-2xl font-bold gradient-text">
+                  {t('transferTime')}: {timeDisplay.t_display} {timeDisplay.time_unit_used}
+                </p>
+              );
+            })()}
           </div>
           
           {/* Dev-only debug line */}
-          {debugMode && (
-            <div className="mt-3 p-2 bg-muted/50 rounded text-xs font-mono">
-              D_SI = {D_SI_m || 'undefined'} m, A_SI = {A_SI_m2 || 'undefined'} m², t_check = {t_SI_s || 'undefined'} s
-            </div>
-          )}
+          {debugMode && (() => {
+            const timeDisplay = t_SI_s ? formatTimeDisplay(t_SI_s, 6) : null;
+            return (
+              <div className="mt-3 p-2 bg-muted/50 rounded text-xs font-mono">
+                D_SI = {D_SI_m || 'undefined'} m, A_SI = {A_SI_m2 || 'undefined'} m², t_check = {timeDisplay ? `${timeDisplay.t_display} ${timeDisplay.time_unit_used}` : 'undefined'}
+              </div>
+            );
+          })()}
           
           {/* UI vs SI validation check */}
           {debugMode && D_SI_m && (() => {

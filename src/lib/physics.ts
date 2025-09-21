@@ -8,6 +8,7 @@ import { brent } from './rootfind';
 import { timeCapillaryFromAreaSI_validated } from './physics-capillary';
 import { parseDecimalLoose } from './num-parse';
 import { toSI_Time, type TimeUnit } from './units';
+import { formatTimeDisplay } from './time-format';
 
 /**
  * Gas properties at 20°C (293.15 K)
@@ -826,7 +827,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
   } else {
     // Default initial bracket
     A_lo = 1e-12; // Very small area
-    A_hi = 1e-2;  // Large area (D ≈ 112.8 mm)
+    A_hi = 1e-2;  // Large area (D ≈ 112.8 mm) - will be constrained below
   }
   
   // Calculate physical diameter constraint based on vessel volume
@@ -1063,9 +1064,13 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
         expansions
       },
       monotonic: true,
-      warnings: [
-        `Root finding: iterations=200, residual_time=${residual_time.toFixed(6)}, A_final_m2=${A_solution.toExponential(6)}, boundary_check=passed`
-      ]
+      warnings: (() => {
+        const timeDisplay = formatTimeDisplay(timeFunction(A_solution));
+        return [
+          `Root finding: iterations=200, residual_time=${residual_time.toFixed(6)}, A_final_m2=${A_solution.toExponential(6)}, boundary_check=passed`,
+          `Time computed: t_display=${timeDisplay.t_display}, time_unit_used=${timeDisplay.time_unit_used}`
+        ];
+      })()
     }
   };
 }
@@ -1127,12 +1132,14 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
   } else {
     // Expanded initial bracket
     A_lo = 1e-12 / Math.pow(expandFactor, 2); // Divide A_lo by expandFactor^2
-    A_hi = Math.min(1e-2 * Math.pow(expandFactor, 2), A_hi_max);  // Multiply A_hi by expandFactor^2, respect physical constraint
+    A_hi = 1e-2 * Math.pow(expandFactor, 2);  // Multiply A_hi by expandFactor^2 - will be constrained below
   }
   
-  // Log physical constraint application for retry
-  if (A_hi >= A_hi_max * 0.99) { // Close to limit
-    console.log(`🔧 Retry: Physical constraint applied A_hi=${A_hi.toExponential(3)} (D_eq=${(D_eq*1000).toFixed(1)}mm, D_max=${(D_max_physical*1000).toFixed(1)}mm, k=${k_physical}, expandFactor=${expandFactor})`);
+  // Apply physical constraint to retry bracket
+  if (A_hi > A_hi_max) {
+    const A_hi_original = A_hi;
+    A_hi = A_hi_max;
+    console.log(`🔧 Retry: Physical constraint applied A_hi=${A_hi.toExponential(3)} (was ${A_hi_original.toExponential(3)}) (D_eq=${(D_eq*1000).toFixed(1)}mm, D_max=${(D_max_physical*1000).toFixed(1)}mm, k=${k_physical}, expandFactor=${expandFactor})`);
   }
   
   // Auto-expand bracket up to 12 times
