@@ -1560,75 +1560,125 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       diagnostics.D_orifice = D_orifice;
     }
     
-    // Residual check: compute forward time with solved diameter
-    let t_check: number;
+    // Isomorphic residual check: replay exact forward calculation
+    let t_forward: number;
+    let A_candidate = Math.PI * D * D / 4;
+    
     try {
-      if (inputs.process === 'blowdown') {
-        t_check = orificeTfromD_blowdown({ ...inputs, D });
+      // Use exact same physics as the original calculation
+      if (validatedInputs.process === 'blowdown') {
+        t_forward = orificeTfromD_blowdown({ ...validatedInputs, D });
       } else {
-        t_check = orificeTfromD_filling({ ...inputs, D });
+        t_forward = orificeTfromD_filling({ ...validatedInputs, D });
       }
       
-      diagnostics.t_check = t_check;
+      diagnostics.t_check = t_forward;
       
-      // Adaptive tolerance: filling mode is less stable numerically
-      const baseTolerance = 0.02; // 2%
-      const tolerance = inputs.process === 'filling' ? baseTolerance * 2.5 : baseTolerance; // 5% for filling, 2% for blowdown
-      const epsilon_used = Math.max(tolerance, 0.01);
+      // Calculate residual
+      const residual = Math.abs(t_forward - validatedInputs.t!) / Math.max(validatedInputs.t!, 1e-9);
+      const epsilon_verify = Math.max(validatedInputs.epsilon || 0.01, 0.01);
       
-      const residual = Math.abs(t_check - inputs.t!) / Math.max(inputs.t!, 1e-9);
-      
-      if (residual > tolerance) {
-        // Calculate choking information
-        let choking: any = {};
-        if (inputs.process === 'filling' && inputs.Ps) {
-          const r_crit = criticalPressureRatio(inputs.gas.gamma);
-          const r = inputs.P1 / inputs.Ps;
-          choking = { r_crit, choked: r <= r_crit, r };
-        } else if (inputs.process === 'blowdown') {
-          const r_crit = criticalPressureRatio(inputs.gas.gamma);
-          const r = inputs.P2 / inputs.P1;
-          choking = { r_crit, choked: r <= r_crit, r };
-        }
-
-        // Build exhaustive devNote
-        const devNote = {
-          process: inputs.process,
-          model: verdict === 'orifice' ? 'orifice' : 'capillary',
-          epsilon_used,
-          residual,
-          t_target: inputs.t!,
-          t_forward: t_check,
-          D_candidate_SI_m: D,
-          A_candidate_SI_m2: Math.PI * D * D / 4,
-          bounds_used: samplingData?.bracketInfo ? {
-            D_lo: Math.sqrt(4 * samplingData.bracketInfo.A_lo / Math.PI),
-            D_hi: Math.sqrt(4 * samplingData.bracketInfo.A_hi / Math.PI),
-            iters: samplingData.bracketInfo.expansions,
-            bracketed: true
-          } : {},
-          choking,
-          inputs_SI: {
-            V_SI_m3: inputs.V,
-            T_K: inputs.T,
-            P1_Pa: inputs.P1,
-            P2_Pa: inputs.P2,
-            Ps_Pa: inputs.Ps,
-            L_SI_m: inputs.L,
-            gas: inputs.gas,
-            Cd: inputs.Cd,
-            regime: inputs.regime
-          }
-        };
+      if (residual > epsilon_verify) {
+        // Try local refinement (±10% on A, 1-2 iterations)
+        let bestA = A_candidate;
+        let bestResidual = residual;
+        let bestT = t_forward;
         
-        console.warn("🔴 Residual Check Failed:", devNote);
-        throw { message: "Result rejected by residual check", devNote };
-      } else if (residual > baseTolerance && inputs.process === 'filling') {
-        // Log acceptable but elevated residual for filling mode
-        console.info("⚠️ Elevated residual accepted for filling mode:", { 
-          residual: residual * 100, 
-          tolerance: tolerance * 100 
-        });
+        const refinementSteps = [-0.1, 0.1, -0.05, 0.05]; // ±10%, ±5%
+        
+        for (let step of refinementSteps) {
+          try {
+            const testA = A_candidate * (1 + step);
+            const testD = Math.sqrt(4 * testA / Math.PI);
+            
+            let testT: number;
+            if (validatedInputs.process === 'blowdown') {
+              testT = orificeTfromD_blowdown({ ...validatedInputs, D: testD });
+            } else {
+              testT = orificeTfromD_filling({ ...validatedInputs, D: testD });
+            }
+            
+            const testResidual = Math.abs(testT - validatedInputs.t!) / Math.max(validatedInputs.t!, 1e-9);
+            
+            if (testResidual < bestResidual) {
+              bestA = testA;
+              bestResidual = testResidual;
+              bestT = testT;
+            }
+          } catch (refineError) {
+            // Skip this refinement step
+            continue;
+          }
+        }
+        
+        // Update if refinement improved
+        if (bestResidual < residual) {
+          A_candidate = bestA;
+          D = Math.sqrt(4 * A_candidate / Math.PI);
+          t_forward = bestT;
+          diagnostics.t_check = t_forward;
+          console.info("🔧 Local refinement improved residual:", { 
+            original: residual * 100, 
+            refined: bestResidual * 100 
+          });
+        }
+        
+        // Final residual check after refinement
+        const finalResidual = Math.abs(t_forward - validatedInputs.t!) / Math.max(validatedInputs.t!, 1e-9);
+        
+        if (finalResidual > epsilon_verify) {
+          // Calculate correct choking information based on process
+          let choking: any = {};
+          if (validatedInputs.process === 'filling' && validatedInputs.Ps) {
+            // Filling: use Pv/Ps (vessel pressure / supply pressure)
+            const r_crit = criticalPressureRatio(validatedInputs.gas.gamma);
+            const r = validatedInputs.P1 / validatedInputs.Ps; // Pv/Ps
+            choking = { r_crit, choked: r < r_crit, r, ratio_type: 'Pv/Ps' };
+          } else if (validatedInputs.process === 'blowdown') {
+            // Blowdown: use P2/P1 (downstream/upstream)
+            const r_crit = criticalPressureRatio(validatedInputs.gas.gamma);
+            const r = validatedInputs.P2 / validatedInputs.P1; // P2/P1
+            choking = { r_crit, choked: r < r_crit, r, ratio_type: 'P2/P1' };
+          }
+
+          // Build comprehensive devNote for residual rejection
+          const devNote = {
+            process: validatedInputs.process,
+            model: verdict === 'orifice' ? 'orifice' : 'capillary',
+            epsilon_used: epsilon_verify,
+            residual: finalResidual,
+            t_target: validatedInputs.t!,
+            t_forward: t_forward,
+            A_candidate_SI_m2: A_candidate,
+            D_candidate_SI_m: D,
+            bounds_used: samplingData?.bracketInfo ? {
+              A_lo: samplingData.bracketInfo.A_lo,
+              A_hi: samplingData.bracketInfo.A_hi,
+              D_lo: Math.sqrt(4 * samplingData.bracketInfo.A_lo / Math.PI),
+              D_hi: Math.sqrt(4 * samplingData.bracketInfo.A_hi / Math.PI),
+              expansions: samplingData.bracketInfo.expansions,
+              bracketed: true
+            } : {},
+            choking,
+            inputs_SI: {
+              V_SI_m3: validatedInputs.V,
+              T_K: validatedInputs.T,
+              P1_Pa: validatedInputs.P1,
+              P2_Pa: validatedInputs.P2,
+              Ps_Pa: validatedInputs.Ps,
+              L_SI_m: validatedInputs.L,
+              gas: validatedInputs.gas,
+              Cd: validatedInputs.Cd,
+              regime: validatedInputs.regime
+            },
+            refinement_attempted: true,
+            original_residual: residual,
+            refined_residual: finalResidual
+          };
+          
+          console.warn("🔴 Residual Check Failed (after refinement):", devNote);
+          throw { message: "Result rejected by residual check", devNote };
+        }
       }
     } catch (error) {
       if (error instanceof ResidualError) {
