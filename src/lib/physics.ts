@@ -829,10 +829,22 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     A_hi = 1e-2;  // Large area (D ≈ 112.8 mm)
   }
   
+  // Calculate physical diameter constraint based on vessel volume
+  const D_eq = Math.pow(6 * inputs.V / Math.PI, 1/3); // Volumic equivalent diameter
+  const k_physical = 2; // Safety factor (can be 1-3)
+  const D_max_physical = k_physical * D_eq;
+  const A_hi_max = Math.PI / 4 * Math.pow(D_max_physical, 2);
+  
+  // Apply physical constraint to initial bracket
+  if (A_hi > A_hi_max) {
+    const A_hi_original = A_hi;
+    A_hi = A_hi_max;
+    console.log(`🔧 Physical constraint applied: A_hi reduced from ${A_hi_original.toExponential(3)} to ${A_hi.toExponential(3)} (D_eq=${(D_eq*1000).toFixed(1)}mm, D_max=${(D_max_physical*1000).toFixed(1)}mm, k=${k_physical})`);
+  }
+  
   // Test inclusion and auto-expand based on time range
   let expansions = 0;
   const maxExpansions = 4; // Max 4 expansions as requested
-  const maxPhysicalA = 1e-1; // Physical upper bound (D ≈ 356 mm)
   
   while (expansions < maxExpansions) {
     try {
@@ -847,7 +859,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
           A_lo /= 10; // Need smaller A (larger time)
         }
         if (t_target < t_hi) {
-          A_hi = Math.min(A_hi * 10, maxPhysicalA); // Need larger A (smaller time), but respect physical limit
+          A_hi = Math.min(A_hi * 10, A_hi_max); // Need larger A (smaller time), but respect physical vessel limit
         }
         expansions++;
         console.log(`Expansion ${expansions}: t_target=${t_target}s not in [${t_hi}s, ${t_lo}s], expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
@@ -859,7 +871,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     } catch (error) {
       // If evaluation fails, try expanding
       A_lo /= 10;
-      A_hi = Math.min(A_hi * 10, maxPhysicalA);
+      A_hi = Math.min(A_hi * 10, A_hi_max);
       expansions++;
       console.log(`Expansion ${expansions}: evaluation failed, expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
     }
@@ -1047,6 +1059,12 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
     return t_calc - t_target;
   };
   
+  // Calculate physical diameter constraint based on vessel volume
+  const D_eq = Math.pow(6 * inputs.V / Math.PI, 1/3); // Volumic equivalent diameter
+  const k_physical = 2; // Safety factor (can be 1-3)
+  const D_max_physical = k_physical * D_eq;
+  const A_hi_max = Math.PI / 4 * Math.pow(D_max_physical, 2);
+  
   // Try cached bracket first, then expand
   const cachedBracket = loadBracketFromCache(inputs.process, gasName);
   let A_lo: number, A_hi: number;
@@ -1055,11 +1073,16 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
     [A_lo, A_hi] = cachedBracket;
     // Apply expansion factor to cached bracket
     A_lo = A_lo / Math.pow(expandFactor, 2);
-    A_hi = A_hi * Math.pow(expandFactor, 2);
+    A_hi = Math.min(A_hi * Math.pow(expandFactor, 2), A_hi_max); // Respect physical constraint
   } else {
     // Expanded initial bracket
     A_lo = 1e-12 / Math.pow(expandFactor, 2); // Divide A_lo by expandFactor^2
-    A_hi = 1e-2 * Math.pow(expandFactor, 2);  // Multiply A_hi by expandFactor^2
+    A_hi = Math.min(1e-2 * Math.pow(expandFactor, 2), A_hi_max);  // Multiply A_hi by expandFactor^2, respect physical constraint
+  }
+  
+  // Log physical constraint application for retry
+  if (A_hi >= A_hi_max * 0.99) { // Close to limit
+    console.log(`🔧 Retry: Physical constraint applied A_hi=${A_hi.toExponential(3)} (D_eq=${(D_eq*1000).toFixed(1)}mm, D_max=${(D_max_physical*1000).toFixed(1)}mm, k=${k_physical}, expandFactor=${expandFactor})`);
   }
   
   // Auto-expand bracket up to 12 times
@@ -1081,14 +1104,14 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
         A_lo /= 10;
       }
       if (f_hi > 0) {
-        A_hi *= 10;
+        A_hi = Math.min(A_hi * 10, A_hi_max); // Respect physical constraint in retry
       }
       
       expansions++;
     } catch (error) {
       // If evaluation fails, try expanding
       A_lo /= 10;
-      A_hi *= 10;
+      A_hi = Math.min(A_hi * 10, A_hi_max); // Respect physical constraint in retry
       expansions++;
     }
   }
