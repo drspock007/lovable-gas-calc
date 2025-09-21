@@ -5,6 +5,7 @@
 
 import { Card } from "@/components/ui/card";
 import DevDump from "@/components/DevDump";
+import { ResidualDetails } from "@/components/ResidualDetails";
 import { useDebug } from "@/lib/debug-context";
 
 export function ResultsTimeFromD({ result, error, devNote, unitTime="s", computeDisabledReason }: any) {
@@ -32,6 +33,13 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
               {error?.message || "Check input parameters and debug information below"}
             </div>
           </div>
+        )}
+        
+        {/* Residual Details Panel - Show when error has devNote */}
+        {!Number.isFinite(shown) && (error?.devNote || devNote) && (
+          <ResidualDetails 
+            devNote={error?.devNote || devNote} 
+          />
         )}
         
         {/* Debug info for disabled compute button */}

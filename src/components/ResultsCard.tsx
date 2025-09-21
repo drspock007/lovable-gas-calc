@@ -11,6 +11,7 @@ import { exportToCSV, exportToPDF, shareCalculation } from '@/lib/export';
 import { useToast } from '@/hooks/use-toast';
 import { formatLength, LengthUnit, LENGTH_LABEL, toSI_Length } from '@/lib/length-units';
 import DevDump from '@/components/DevDump';
+import { ResidualDetails } from '@/components/ResidualDetails';
 
 interface ResultsCardProps {
   results: ComputeOutputs | null;
@@ -203,6 +204,11 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
                 ))}
               </ul>
             </div>
+          )}
+          
+          {/* Residual Details Panel - Show for residual check errors */}
+          {compError.type === 'residual' && compError.details && (
+            <ResidualDetails devNote={compError.details} />
           )}
           
           {showRetryButton && onRetry && (

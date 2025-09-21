@@ -1588,8 +1588,18 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
         details: error.details,
         suggestions: error.suggestions || []
       };
-    } else if (typeof error === 'object' && error !== null && 'type' in error) {
-      computationError = error as ComputationError;
+    } else if (typeof error === 'object' && error !== null && 'message' in error) {
+      // Handle errors thrown with { message, devNote } format
+      if ('devNote' in error) {
+        computationError = {
+          type: 'residual',
+          message: error.message as string,
+          details: error.devNote,
+          suggestions: ['Check residual tolerance settings or try different model parameters']
+        };
+      } else {
+        computationError = error as ComputationError;
+      }
     } else {
       computationError = {
         type: 'model',
@@ -1897,8 +1907,24 @@ export function computeTfromD(inputs: ComputeInputs): ComputeOutputs {
   } catch (error) {
     let computationError: ComputationError;
     
-    if (typeof error === 'object' && error !== null && 'type' in error) {
-      computationError = error as ComputationError;
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      // Handle errors thrown with { message, devNote } format
+      if ('devNote' in error) {
+        computationError = {
+          type: 'residual',
+          message: error.message as string,
+          details: error.devNote,
+          suggestions: ['Check residual tolerance settings or try different model parameters']
+        };
+      } else if ('type' in error) {
+        computationError = error as ComputationError;
+      } else {
+        computationError = {
+          type: 'model',
+          message: error.message as string,
+          suggestions: ['Check input parameters and model assumptions']
+        };
+      }
     } else {
       computationError = {
         type: 'model',
