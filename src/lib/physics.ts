@@ -848,24 +848,30 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
   
   while (expansions < maxExpansions) {
     try {
-      // Calculate times at bracket endpoints (assuming t decreases with A)
-      const t_lo = timeFunction(A_lo);
-      const t_hi = timeFunction(A_hi);
+      // 1) Calculate times at bracket endpoints
+      let t_lo = timeFunction(A_lo);
+      let t_hi = timeFunction(A_hi);
       
-      // Test inclusion: t_target should be in [t_hi, t_lo] (t decreases with A)
-      if (t_target > t_lo || t_target < t_hi) {
-        // Target time is outside bracket, need to expand
-        if (t_target > t_lo) {
-          A_lo /= 10; // Need smaller A (larger time)
-        }
-        if (t_target < t_hi) {
-          A_hi = Math.min(A_hi * 10, A_hi_max); // Need larger A (smaller time), but respect physical vessel limit
-        }
+      // 2) Ensure monotone decreasing: t_lo >= t_hi (t decreases with increasing A)
+      if (t_lo < t_hi) {
+        // Swap the bounds to ensure proper monotonicity
+        [A_lo, A_hi] = [A_hi, A_lo];
+        [t_lo, t_hi] = [t_hi, t_lo];
+        console.log(`🔄 Monotonicity fix: swapped bounds to ensure t_lo(${t_lo.toFixed(2)}s) >= t_hi(${t_hi.toFixed(2)}s)`);
+      }
+      
+      // 3) Test inclusion: t_hi <= t_target <= t_lo (monotone decreasing)
+      const inside = (t_hi <= t_target && t_target <= t_lo);
+      
+      if (!inside) {
+        // Auto-expand bounds
+        A_lo /= 10; // Smaller A -> larger time
+        A_hi = Math.min(A_hi * 10, A_hi_max); // Larger A -> smaller time, respect physical limit
         expansions++;
         console.log(`Expansion ${expansions}: t_target=${t_target}s not in [${t_hi}s, ${t_lo}s], expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
       } else {
-        // Target time is included in bracket
-        console.log(`Target time ${t_target}s is included in [${t_hi}s, ${t_lo}s], proceeding with solving`);
+        // Target time is properly included in bracket
+        console.log(`✅ Target time ${t_target}s is included in [${t_hi}s, ${t_lo}s], proceeding with solving`);
         break;
       }
     } catch (error) {
@@ -880,15 +886,23 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
   if (expansions >= maxExpansions) {
     // Final inclusion test for error message
     try {
-      const t_lo = timeFunction(A_lo);
-      const t_hi = timeFunction(A_hi);
+      let t_lo = timeFunction(A_lo);
+      let t_hi = timeFunction(A_hi);
+      
+      // Ensure correct order for error reporting
+      if (t_lo < t_hi) {
+        [A_lo, A_hi] = [A_hi, A_lo];
+        [t_lo, t_hi] = [t_hi, t_lo];
+      }
+      
       throw { 
         message: "Target time out of bracket", 
         devNote: { 
           t_target_SI: t_target, 
           t_lo, 
           t_hi, 
-          bracket: { A_lo, A_hi },
+          A_lo, 
+          A_hi,
           expansions,
           max_expansions: maxExpansions
         } 
@@ -1059,6 +1073,18 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
     return t_calc - t_target;
   };
   
+  // Define time function for inclusion tests (same logic as objectiveFunction but returns t_calc directly)
+  const timeFunction = (A: number): number => {
+    const D = Math.sqrt(4 * A / Math.PI);
+    const testInputs = { ...inputs, D };
+    
+    if (inputs.process === 'blowdown') {
+      return orificeTfromD_blowdown(testInputs);
+    } else {
+      return orificeTfromD_filling(testInputs);
+    }
+  };
+  
   // Calculate physical diameter constraint based on vessel volume
   const D_eq = Math.pow(6 * inputs.V / Math.PI, 1/3); // Volumic equivalent diameter
   const k_physical = 2; // Safety factor (can be 1-3)
@@ -1091,28 +1117,38 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
   
   while (expansions < maxExpansions) {
     try {
-      const f_lo = objectiveFunction(A_lo);
-      const f_hi = objectiveFunction(A_hi);
+      // 1) Calculate times at bracket endpoints
+      let t_lo = timeFunction(A_lo);
+      let t_hi = timeFunction(A_hi);
       
-      // Check if we have proper bracketing
-      if (f_lo * f_hi < 0) {
-        break; // We have a bracket
+      // 2) Ensure monotone decreasing: t_lo >= t_hi (t decreases with increasing A)
+      if (t_lo < t_hi) {
+        // Swap the bounds to ensure proper monotonicity
+        [A_lo, A_hi] = [A_hi, A_lo];
+        [t_lo, t_hi] = [t_hi, t_lo];
+        console.log(`🔄 Retry monotonicity fix: swapped bounds to ensure t_lo(${t_lo.toFixed(2)}s) >= t_hi(${t_hi.toFixed(2)}s)`);
       }
       
-      // Expand bracket
-      if (f_lo < 0) {
-        A_lo /= 10;
-      }
-      if (f_hi > 0) {
-        A_hi = Math.min(A_hi * 10, A_hi_max); // Respect physical constraint in retry
-      }
+      // 3) Test inclusion: t_hi <= t_target <= t_lo (monotone decreasing)
+      const inside = (t_hi <= t_target && t_target <= t_lo);
       
-      expansions++;
+      if (!inside) {
+        // Auto-expand bounds
+        A_lo /= 10; // Smaller A -> larger time
+        A_hi = Math.min(A_hi * 10, A_hi_max); // Larger A -> smaller time, respect physical limit
+        expansions++;
+        console.log(`Retry expansion ${expansions}: t_target=${t_target}s not in [${t_hi}s, ${t_lo}s], expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
+      } else {
+        // Target time is properly included in bracket
+        console.log(`✅ Retry: Target time ${t_target}s is included in [${t_hi}s, ${t_lo}s], proceeding with solving`);
+        break;
+      }
     } catch (error) {
       // If evaluation fails, try expanding
       A_lo /= 10;
       A_hi = Math.min(A_hi * 10, A_hi_max); // Respect physical constraint in retry
       expansions++;
+      console.log(`Retry expansion ${expansions}: evaluation failed, expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
     }
   }
   
