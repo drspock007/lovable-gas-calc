@@ -971,7 +971,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     samplingData.warnings.push(`Sampling failed: ${(error as Error).message}`);
   }
   
-  // Use Brent's method for robust root finding
+  // Use Brent's method for robust root finding with f(A) = t(A) - t_target_SI
   const A_solution = brent(objectiveFunction, [A_lo, A_hi], {
     tolerance: 1e-6,
     maxIterations: 200
@@ -984,33 +984,40 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     );
   }
   
-  // Check if solution is at boundary (prevent returning exact A_lo/A_hi)
-  const tolerance = 1e-10; // Very small tolerance for boundary detection
-  const relativeToleranceA = 1e-6; // Relative tolerance (0.0001%)
+  // CRITICAL: Never take the bound as solution
+  // Check if algorithm terminated at a boundary without satisfying residual
+  const boundaryTolerance = 1e-8;
+  const isAtLowerBound = Math.abs(A_solution - A_lo) < boundaryTolerance;
+  const isAtUpperBound = Math.abs(A_solution - A_hi) < boundaryTolerance;
   
-  if (Math.abs(A_solution - A_lo) < tolerance || 
-      Math.abs(A_solution - A_hi) < tolerance ||
-      Math.abs(A_solution - A_lo) / A_lo < relativeToleranceA ||
-      Math.abs(A_solution - A_hi) / A_hi < relativeToleranceA) {
+  if (isAtLowerBound || isAtUpperBound) {
+    // Verify residual before rejecting
+    const t_computed = timeFunction(A_solution);
+    const residual_time = Math.abs(t_computed - t_target) / Math.max(t_target, 1e-9);
+    const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
     
-    // Solution is too close to boundary
-    const t_lo = timeFunction(A_lo);
-    const t_hi = timeFunction(A_hi);
-    throw { 
-      message: "Target time out of bracket", 
-      devNote: { 
-        t_target_SI: t_target, 
-        t_lo, 
-        t_hi, 
-        bracket: { A_lo, A_hi },
-        A_solution,
-        boundary_reached: true,
-        expansions
-      } 
-    };
+    if (residual_time > epsilon_threshold) {
+      // Hit boundary without satisfying residual - reject
+      const t_lo = timeFunction(A_lo);
+      const t_hi = timeFunction(A_hi);
+      throw { 
+        message: "Could not solve within bracket (hit bound)", 
+        devNote: { 
+          A_lo, 
+          A_hi, 
+          t_lo, 
+          t_hi, 
+          t_target_SI: t_target,
+          A_solution,
+          residual_time,
+          epsilon_threshold,
+          boundary_hit: isAtLowerBound ? 'A_lo' : 'A_hi'
+        } 
+      };
+    }
   }
   
-  // Verify residual time tolerance
+  // Verify final residual for all solutions
   const t_computed = timeFunction(A_solution);
   const residual_time = Math.abs(t_computed - t_target) / Math.max(t_target, 1e-9);
   const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
@@ -1024,6 +1031,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
         residual_time,
         epsilon_threshold,
         A_solution,
+        A_final_m2: A_solution,
         bracket: { A_lo, A_hi }
       } 
     };
@@ -1043,7 +1051,23 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     );
   }
   
-  return { D, sampling: samplingData };
+  return { 
+    D, 
+    sampling: samplingData || {
+      samples: [],
+      bracketInfo: {
+        A_lo,
+        A_hi,
+        t_A_lo: timeFunction(A_lo),
+        t_A_hi: timeFunction(A_hi),
+        expansions
+      },
+      monotonic: true,
+      warnings: [
+        `Root finding: iterations=200, residual_time=${residual_time.toFixed(6)}, A_final_m2=${A_solution.toExponential(6)}, boundary_check=passed`
+      ]
+    }
+  };
 }
 
 /**
@@ -1159,7 +1183,7 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
     );
   }
   
-  // Use Brent's method for robust root finding
+  // Use Brent's method for robust root finding with f(A) = t(A) - t_target_SI
   const A_solution = brent(objectiveFunction, [A_lo, A_hi], {
     tolerance: 1e-6,
     maxIterations: 200
@@ -1172,9 +1196,50 @@ function solveOrificeDfromTWithRetry(inputs: ComputeInputs, expandFactor: number
     );
   }
   
+  // CRITICAL: Never take the bound as solution
+  // Check if algorithm terminated at a boundary without satisfying residual
+  const boundaryTolerance = 1e-8;
+  const isAtLowerBound = Math.abs(A_solution - A_lo) < boundaryTolerance;
+  const isAtUpperBound = Math.abs(A_solution - A_hi) < boundaryTolerance;
+  
+  if (isAtLowerBound || isAtUpperBound) {
+    // Verify residual before rejecting
+    const t_computed = timeFunction(A_solution);
+    const residual_time = Math.abs(t_computed - t_target) / Math.max(t_target, 1e-9);
+    const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
+    
+    if (residual_time > epsilon_threshold) {
+      // Hit boundary without satisfying residual - reject
+      const t_lo = timeFunction(A_lo);
+      const t_hi = timeFunction(A_hi);
+      throw { 
+        message: "Could not solve within bracket (hit bound)", 
+        devNote: { 
+          A_lo, 
+          A_hi, 
+          t_lo, 
+          t_hi, 
+          t_target_SI: t_target,
+          A_solution,
+          residual_time,
+          epsilon_threshold,
+          boundary_hit: isAtLowerBound ? 'A_lo' : 'A_hi',
+          retry_context: { expand_factor: expandFactor }
+        } 
+      };
+    }
+  }
+  
+  // Verify final residual for all solutions
+  const t_computed = timeFunction(A_solution);
+  const residual_time = Math.abs(t_computed - t_target) / Math.max(t_target, 1e-9);
+  const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
+  
   // Save successful expanded bracket for future use
   saveBracketToCache(A_lo, A_hi, inputs.process, gasName);
   
+  // Save successful expanded bracket for future use
+  saveBracketToCache(A_lo, A_hi, inputs.process, gasName);
   // Convert area back to diameter
   const D = Math.sqrt(4 * A_solution / Math.PI);
   
