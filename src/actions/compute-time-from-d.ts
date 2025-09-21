@@ -17,7 +17,9 @@ export async function computeTimeFromD(ui: any) {
     ...ui, 
     __SI__: SI, 
     model: ui.modelSelection ?? ui.model, 
-    debug: ui.debug 
+    debug: ui.debug,
+    expandFactor: ui.expandFactor,
+    retryContext: ui.retryContext
   });
   
   // Optional: residual (replay t(A*)) for transparency  

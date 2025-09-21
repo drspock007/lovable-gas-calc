@@ -88,7 +88,7 @@ export const Calculator: React.FC = () => {
     localStorage.setItem('gasTransfer-inputValues', JSON.stringify(inputValues));
   }, [inputValues]);
 
-  const handleCalculate = async (expandFactor: number = 1) => {
+  const handleCalculate = async (expandFactor: number = 1, retryContext?: any) => {
     setLoading(true);
     setError('');
     setDevNote(null);
@@ -257,8 +257,31 @@ export const Calculator: React.FC = () => {
             ...calculationInputs,
             diameter: inputValues.D,
             diameterUnit: inputValues.D_unit,
-            debug: debugMode
+            debug: debugMode,
+            expandFactor: expandFactor > 1 ? expandFactor : undefined,
+            retryContext
           });
+          
+          // Apply retry enrichment to successful TfromD results as well
+          if (retryContext && timeResultData.debugNote) {
+            timeResultData.debugNote = {
+              ...timeResultData.debugNote,
+              retry: {
+                previous_bounds: retryContext.previous_bounds,
+                new_bounds: {
+                  D_lo: 0,
+                  D_hi: 0,
+                  expanded: false,
+                  expand_factor: retryContext.expand_factor
+                },
+                previous_residual: retryContext.previous_residual,
+                new_residual: null,
+                expand_factor: retryContext.expand_factor,
+                attempt: retryContext.attempt
+              }
+            };
+          }
+          
           setTimeResult(timeResultData);
           
           // Handle debug information from computation
@@ -357,13 +380,31 @@ export const Calculator: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : 'Calculation failed';
       const devNote = (err as any)?.devNote ?? (err as any)?.cause?.devNote ?? null;
       
+      // Enrich devNote with retry information if this was a retry attempt
+      let enrichedDevNote = devNote;
+      if (retryContext && devNote) {
+        // Calculate new bounds from retry context
+        const currentBounds = devNote.bounds_used || {};
+        enrichedDevNote = {
+          ...devNote,
+          retry: {
+            previous_bounds: retryContext.previous_bounds,
+            new_bounds: currentBounds,
+            previous_residual: retryContext.previous_residual,
+            new_residual: devNote.residual,
+            expand_factor: retryContext.expand_factor,
+            attempt: retryContext.attempt
+          }
+        };
+      }
+      
       setError(errorMessage);
       setResults(null);
       setTimeResult(null);
       
       // Always set devNote for better debugging (especially when debug=ON)
-      if (devNote) {
-        setDevNote(devNote);
+      if (enrichedDevNote) {
+        setDevNote(enrichedDevNote);
       } else if (debugMode) {
         // Fallback debug info when no devNote available
         const { parseDecimalLoose } = await import('@/lib/num-parse');
@@ -396,7 +437,21 @@ export const Calculator: React.FC = () => {
     const newRetryCount = retryCount + 1;
     setRetryCount(newRetryCount);
     const expandFactor = Math.pow(2, newRetryCount); // 2, 4, 8, 16...
-    handleCalculate(expandFactor);
+    
+    // Capture previous bounds and residual from current devNote for retry logging
+    const previousBounds = devNote?.bounds_used || {};
+    const previousResidual = devNote?.residual || null;
+    
+    // Store retry context for enriching devNote later
+    const retryContext = {
+      previous_bounds: previousBounds,
+      previous_residual: previousResidual,
+      expand_factor: expandFactor,
+      attempt: newRetryCount
+    };
+    
+    // Pass retry context to handleCalculate
+    handleCalculate(expandFactor, retryContext);
   };
 
   const getSelectedGas = () => {

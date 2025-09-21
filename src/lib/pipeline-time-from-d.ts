@@ -6,6 +6,8 @@ import { checkDiameterVsVolume, formatVolumeCheckDebug } from '@/lib/diameter-vo
 
 export function computeTimeFromDiameter(ui: any) {
   const SI = ui?.__SI__;
+  const expandFactor = ui?.expandFactor || 1;
+  const retryContext = ui?.retryContext;
   
   // Validate required SI inputs before entering physics
   const must = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
@@ -96,7 +98,22 @@ export function computeTimeFromDiameter(ui: any) {
     model,
     t_SI_s: t_SI,
     inputs_SI: ui.__SI__,
-    success: true
+    success: true,
+    ...(retryContext && {
+      retry: {
+        previous_bounds: retryContext.previous_bounds,
+        new_bounds: {
+          D_lo: retryContext.previous_bounds.D_lo ? retryContext.previous_bounds.D_lo / expandFactor : undefined,
+          D_hi: retryContext.previous_bounds.D_hi ? retryContext.previous_bounds.D_hi * expandFactor : undefined,
+          expanded: true,
+          expand_factor: expandFactor
+        },
+        previous_residual: retryContext.previous_residual,
+        new_residual: null, // Will be updated if residual check occurs
+        expand_factor: expandFactor,
+        attempt: retryContext.attempt
+      }
+    })
   } : undefined;
 
   return {
