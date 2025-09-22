@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { ModeSelector, ProcessType, SolveForType, ModelSelectionType } from '@/components/ModeSelector';
 import { InputsCard, InputValues } from '@/components/InputsCard';
@@ -34,7 +36,6 @@ import {
   timeToSI 
 } from '@/lib/units';
 import { PressureUnit, toSI_Pressure, absFromGauge, gaugeFromAbs, patmFromAltitude, clampAbs } from '@/lib/pressure-units';
-import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
 import DevPanel from '@/components/DevPanel';
 
 export const Calculator: React.FC = () => {
@@ -455,6 +456,72 @@ export const Calculator: React.FC = () => {
     }
   };
 
+  const handleQuickFillTest = async () => {
+    // Pre-fill the test case: 4L CH₄ Filling D-from-t
+    const testValues: InputValues = {
+      // Volume: 4 L
+      V: 4,
+      V_unit: 'liter',
+      
+      // Temperature: 15°C  
+      T: 15,
+      T_unit: 'C',
+      
+      // Pressures (gauge mode)
+      P1: 0,     // Initial pressure = 0 kPag (atmospheric)
+      P1_unit: 'kPa',
+      P2: 600,   // Target pressure = 600 kPag 
+      P2_unit: 'kPa',
+      Ps: 1200,  // Supply pressure = 1200 kPag
+      Ps_unit: 'kPa',
+      
+      // Length: 60 mm
+      L: 60,
+      L_unit: 'mm',
+      
+      // Target time: 175 s
+      t: 175,
+      t_unit: 's',
+      
+      // Other settings
+      gasType: 'CH4',
+      pressureInputMode: 'gauge' as const,
+      patmMode: 'standard' as const,
+      patmValue: { value: 101.325, unit: 'kPa' as const },
+      altitude_m: 0,
+      Cd: 0.62,
+      epsilon: 0.01,
+      regime: 'isothermal' as const
+    };
+
+    // Set all form values
+    setInputValues(testValues);
+    
+    // Set mode to Filling D-from-t with Orifice model
+    setProcess('filling');
+    setSolveFor('DfromT');
+    setModelSelection('orifice');
+    
+    // Clear any existing results/errors
+    setResults(null);
+    setTimeResult(null);
+    setError('');
+    setDevNote(null);
+    
+    // Brief delay to allow form updates, then calculate
+    setTimeout(async () => {
+      await handleCalculate();
+      
+      // Auto-scroll to results section after calculation
+      setTimeout(() => {
+        const resultsSection = document.querySelector('.engineering-card');
+        if (resultsSection) {
+          resultsSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+    }, 100);
+  };
+
   const handleRetry = () => {
     const newRetryCount = retryCount + 1;
     setRetryCount(newRetryCount);
@@ -714,6 +781,18 @@ export const Calculator: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-2">
+              {/* Debug Quick Test Button - Only visible in debug mode */}
+              {(debugMode || new URLSearchParams(window.location.search).get('debug') === '1') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleQuickFillTest}
+                  className="text-xs px-3 py-1 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-950"
+                >
+                  🧪 Test Case (4L/CH₄/175s)
+                </Button>
+              )}
+              
               <LanguageToggle />
               <ThemeToggle />
             </div>
