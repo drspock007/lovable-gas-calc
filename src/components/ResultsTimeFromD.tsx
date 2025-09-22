@@ -6,6 +6,7 @@
 import { Card } from "@/components/ui/card";
 import DevDump from "@/components/DevDump";
 import { ResidualDetails } from "@/components/ResidualDetails";
+import { ErrorDebugPanel } from "@/components/ErrorDebugPanel";
 import { formatTimeDisplay } from "@/lib/time-format";
 import { useDebug } from "@/lib/debug-context";
 
@@ -38,10 +39,11 @@ export function ResultsTimeFromD({ result, error, devNote, unitTime="s", compute
           </div>
         )}
         
-        {/* Residual Details Panel - Show when error has devNote */}
-        {(!timeDisplay || !Number.isFinite(timeDisplay.raw_value)) && (error?.devNote || devNote) && (
-          <ResidualDetails 
-            devNote={error?.devNote || devNote} 
+        {/* Error Debug Panel - Always shown when calculation fails and has devNote */}
+        {(!timeDisplay || !Number.isFinite(timeDisplay.raw_value)) && (
+          <ErrorDebugPanel 
+            error={error}
+            devNote={devNote}
           />
         )}
         

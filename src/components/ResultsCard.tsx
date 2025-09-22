@@ -13,6 +13,7 @@ import { formatLength, LengthUnit, LENGTH_LABEL, toSI_Length } from '@/lib/lengt
 import { formatTimeDisplay } from '@/lib/time-format';
 import DevDump from '@/components/DevDump';
 import { ResidualDetails } from '@/components/ResidualDetails';
+import { ErrorDebugPanel } from '@/components/ErrorDebugPanel';
 
 interface ResultsCardProps {
   results: ComputeOutputs | null;
@@ -242,6 +243,8 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
           </CardHeader>
           <CardContent>
             <p className="text-destructive">{error}</p>
+            {/* Error Debug Panel - Always shown when error has devNote */}
+            <ErrorDebugPanel error={{ devNote }} />
           </CardContent>
         </Card>
         <DevDump title="Error Debug" note={devNote} />
