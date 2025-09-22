@@ -34,6 +34,12 @@ export type TASampler = {
   } 
 };
 
+// Import all needed functions statically
+import { timeCapillaryFromAreaSI_validated } from './physics-capillary';
+import { capillaryDfromT_blowdown, capillaryDfromT_filling } from './physics/capillary';
+import { solveOrificeDfromT } from './physics/orifice-solvers';
+import { timeOrificeFromAreaSI } from './legacy-wrappers';
+
 // Re-export key functions that may be imported directly
 export { 
   orificeTfromD_blowdown,
@@ -45,7 +51,7 @@ export {
 // Legacy function that still needs to exist
 export function timeCapillaryFromAreaSI(SI: any, A_SI: number): number {
   // Use the validated version and extract the time value
-  const result = require('./physics-capillary').timeCapillaryFromAreaSI_validated(SI, A_SI);
+  const result = timeCapillaryFromAreaSI_validated(SI, A_SI);
   return result.t_SI_s;
 }
 
@@ -56,19 +62,16 @@ export function timeCapillaryFromAreaSI_legacy(inputs: any, A_SI_m2: number): nu
   const inputsCopy = { ...inputs, D };
   
   if (inputs.process === 'blowdown') {
-    // Import dynamically to avoid circular deps
-    const { capillaryTfromD_blowdown } = require('./physics/capillary');
-    return capillaryTfromD_blowdown(inputsCopy);
+    return capillaryDfromT_blowdown(inputsCopy);
   } else {
-    const { capillaryTfromD_filling } = require('./physics/capillary');
-    return capillaryTfromD_filling(inputsCopy);
+    return capillaryDfromT_filling(inputsCopy);
   }
 }
 
 // Legacy solver with retry - just alias to the main solver
-export const solveOrificeDfromTWithRetry = require('./physics/orifice-solvers').solveOrificeDfromT;
+export const solveOrificeDfromTWithRetry = solveOrificeDfromT;
 
 // Legacy wrapper for tests that use old SI format
 export function timeOrificeFromAreaSI_old(SI: any, A_SI_m2: number): number {
-  return require('./legacy-wrappers').timeOrificeFromAreaSI(SI, A_SI_m2);
+  return timeOrificeFromAreaSI(SI, A_SI_m2);
 }

@@ -229,9 +229,9 @@ export const Calculator: React.FC = () => {
       if (solveFor === 'DfromT' && expandFactor > 1) {
         // Use retry solver with expanded bounds
         try {
-          const D = solveOrificeDfromTWithRetry(calculationInputs, expandFactor);
-          calculationResults = computeDfromT({...calculationInputs, D });
-          calculationResults.D = D;
+          const result = solveOrificeDfromTWithRetry(calculationInputs);
+          calculationResults = computeDfromT({...calculationInputs, D: result.D });
+          calculationResults.D = result.D;
         } catch (retryError) {
           calculationResults = computeDfromT(calculationInputs);
         }
