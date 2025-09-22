@@ -63,5 +63,5 @@ export { sample_tA } from './sampling';
 // Main compute engines
 export { computeDfromT, computeTfromD } from './compute-engines';
 
-// Legacy compatibility - re-export from original file temporarily
-export * from '../physics';
+// For backward compatibility, also export from physics-capillary
+export { timeCapillaryFromAreaSI_validated } from '../physics-capillary';
