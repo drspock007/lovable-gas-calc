@@ -10,14 +10,23 @@ export interface SamplePoint {
   A_m2: number;
   D_m: number;
   t_s: number;
-  choked?: boolean;
+  choked: boolean; // Required for compatibility
   subcritical?: boolean;
+  phase: 'sonic'|'sub'|'mixed'; // Required for compatibility
 }
 
 export interface SamplingResult {
   samples: SamplePoint[];
   monotonic: boolean;
   warnings: string[];
+  model: 'orifice'|'capillary'; // Required to match TASampler
+  bracket?: { 
+    A_lo: number; 
+    A_hi: number; 
+    t_lo: number; 
+    t_hi: number; 
+    expansions: number 
+  };
 }
 
 /**
@@ -81,7 +90,9 @@ export function sample_tA(
         A_m2: A,
         D_m: D,
         t_s: t,
-        subcritical: model === 'capillary' // Capillary is always subcritical
+        choked: false, // Default to false, could be computed for orifice
+        subcritical: model === 'capillary', // Capillary is always subcritical
+        phase: 'sub' as const // Default phase
       });
       
     } catch (error) {
@@ -115,6 +126,7 @@ export function sample_tA(
   return {
     samples,
     monotonic,
-    warnings
+    warnings,
+    model // Add the model to the result
   };
 }
