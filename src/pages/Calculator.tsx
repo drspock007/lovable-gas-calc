@@ -378,7 +378,45 @@ export const Calculator: React.FC = () => {
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Calculation failed';
-      const devNote = (err as any)?.devNote ?? (err as any)?.cause?.devNote ?? null;
+      const originalDevNote = (err as any)?.devNote ?? (err as any)?.cause?.devNote ?? null;
+      
+      // Always create a devNote for error display - never depend on external contexts
+      let devNote = originalDevNote;
+      if (!devNote) {
+        // Build SI for fallback devNote
+        let SI: any = null;
+        try {
+          const { buildSI } = await import('@/lib/build-si');
+          SI = buildSI(inputValues);
+        } catch (siError) {
+          // If SI building fails, create minimal SI info
+          SI = {
+            error: "Failed to build SI",
+            raw_inputs: { ...inputValues }
+          };
+        }
+        
+        devNote = {
+          reason: errorMessage || "Calculation failed",
+          inputs_SI: SI,
+          process: process,
+          solveFor: solveFor,
+          modelSelection: modelSelection,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Add target time for DfromT mode
+        if (solveFor === 'DfromT') {
+          try {
+            const { parseDecimalLoose } = await import('@/lib/num-parse');
+            const tRaw = inputValues.t;
+            const tParsed = parseDecimalLoose(tRaw);
+            devNote.t_target_s = tParsed;
+          } catch (parseError) {
+            devNote.t_target_error = "Failed to parse target time";
+          }
+        }
+      }
       
       // Enrich devNote with retry information if this was a retry attempt
       let enrichedDevNote = devNote;
@@ -402,26 +440,10 @@ export const Calculator: React.FC = () => {
       setResults(null);
       setTimeResult(null);
       
-      // Always set devNote for better debugging (especially when debug=ON)
-      if (enrichedDevNote) {
-        setDevNote(enrichedDevNote);
-      } else if (debugMode) {
-        // Fallback debug info when no devNote available
-        const { parseDecimalLoose } = await import('@/lib/num-parse');
-        const { toSI_Length } = await import('@/lib/length-units');
-        
-        const fallbackDbg = {
-          diameterRaw: inputValues.D,
-          diameterUnit: inputValues.D_unit,
-          parsed: parseDecimalLoose(inputValues.D),
-          D_SI: toSI_Length(parseDecimalLoose(inputValues.D || 0), inputValues.D_unit),
-          errorMessage,
-          timestamp: new Date().toISOString()
-        };
-        setDevNote(fallbackDbg);
-      }
+      // Always set devNote for JSON display in ErrorDebugPanel
+      setDevNote(enrichedDevNote);
       
-      console.warn("[TimeFromD ERROR]", { errorMessage, devNote }, err);
+      console.warn("[TimeFromD ERROR]", { errorMessage, devNote: enrichedDevNote }, err);
       
       toast({
         title: "Calculation Error",

@@ -244,7 +244,7 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
           <CardContent>
             <p className="text-destructive">{error}</p>
             {/* Error Debug Panel - Always shown when error has devNote */}
-            <ErrorDebugPanel error={{ devNote }} />
+            <ErrorDebugPanel devNote={devNote} />
           </CardContent>
         </Card>
         <DevDump title="Error Debug" note={devNote} />
