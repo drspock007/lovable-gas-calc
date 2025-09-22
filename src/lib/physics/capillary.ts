@@ -55,13 +55,13 @@ export function capillaryDfromT_filling(inputs: ComputeInputs): number {
   const Pf = P2 * (1 - epsilon);
   
   const numerator = (Ps - P1) * (Pf + Ps);
-  const denominator = (Ps + P1) * (Pf - Ps);
+  const denominator = (Ps + P1) * (Ps - Pf);
   
   if (numerator <= 0) {
     throw new Error(`Numerator ≤ 0: (Ps-P1)*(Pf+Ps) = (${Ps}-${P1})*(${Pf}+${Ps}) = ${numerator}`);
   }
   if (denominator <= 0) {
-    throw new Error(`Denominator ≤ 0: (Ps+P1)*(Pf-Ps) = (${Ps}+${P1})*(${Pf}-${Ps}) = ${denominator}`);
+    throw new Error(`Denominator ≤ 0: (Ps+P1)*(Ps-Pf) = (${Ps}+${P1})*(${Ps}-${Pf}) = ${denominator}`);
   }
   
   const lnTerm = Math.log(numerator / denominator);
@@ -92,7 +92,7 @@ export function capillaryTfromD_filling(inputs: ComputeInputs): number {
   const Pf = P2 * (1 - epsilon);
   
   const numerator = (Ps - P1) * (Pf + Ps);
-  const denominator = (Ps + P1) * (Pf - Ps);
+  const denominator = (Ps + P1) * (Ps - Pf);
   
   if (numerator <= 0 || denominator <= 0) {
     throw new Error('Invalid pressure conditions for capillary filling');

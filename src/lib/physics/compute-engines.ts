@@ -198,7 +198,21 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
             reason: enrichedError.message || "capillary solver failed"
           };
         }
-        throw enrichedError;
+        
+        // Only rethrow if not using forced orifice model
+        if (forcedModel !== 'orifice') {
+          throw enrichedError;
+        } else {
+          // Degrade to warning when orifice model is forced
+          warnings.push(`Capillary calculation warning: ${(error as Error).message}`);
+        }
+      } else {
+        // For non-filling modes, only rethrow if not using forced orifice model
+        if (forcedModel !== 'orifice') {
+          throw error;
+        } else {
+          warnings.push(`Capillary calculation warning: ${(error as Error).message}`);
+        }
       }
     }
     
