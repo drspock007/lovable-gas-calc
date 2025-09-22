@@ -1422,6 +1422,23 @@ function generateWarnings(diagnostics: Record<string, number | string | boolean>
  * @returns Computation results
  */
 export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
+  // Capture inputs for enriched error reporting
+  const inputs_SI = {
+    V_SI_m3: inputs.V,
+    T_K: inputs.T,
+    P1_Pa: inputs.P1,
+    P2_Pa: inputs.P2,
+    Ps_Pa: inputs.Ps,
+    L_SI_m: inputs.L,
+    gas: {
+      name: inputs.gas.name,
+      R: inputs.gas.R,
+      gamma: inputs.gas.gamma,
+      mu: inputs.gas.mu
+    },
+    Cd: inputs.Cd || 0.62,
+    regime: inputs.regime || 'default'
+  };
   try {
     // Robust target time reading - compatible with current interface but extensible
     const raw = inputs?.t; // For now, read from 't' field since that's what ComputeInputs has
@@ -1455,6 +1472,23 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       }
     } catch (error) {
       capillary_error = `Capillary model failed: ${(error as Error).message}`;
+      
+      // Enrich capillary error with context for Filling mode
+      if (validatedInputs.process === 'filling') {
+        const enrichedError = error as any;
+        if (enrichedError.devNote) {
+          enrichedError.devNote = {
+            ...enrichedError.devNote,
+            process: 'filling',
+            model: 'capillary',
+            t_target_s: t_target_SI,
+            epsilon: validatedInputs.epsilon || 0.01,
+            inputs_SI,
+            reason: enrichedError.message || "capillary solver failed"
+          };
+        }
+        throw enrichedError;
+      }
     }
     
     // 2) Compute D_orif via orifice model (try isothermal first, then robust root finding)
@@ -1521,11 +1555,48 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       
       // Fall back to iterative solver only if isothermal completely failed or regime is adiabatic
       if (!D_orifice || (orifice_isothermal_failed && !isothermal_residual_marginal)) {
-        const result = solveOrificeDfromT(inputs);
-        D_orifice = result.D;
-        samplingData = result.sampling;
+        try {
+          const result = solveOrificeDfromT(inputs);
+          D_orifice = result.D;
+          samplingData = result.sampling;
+        } catch (solverError) {
+          // Enrich orifice solver error with context for Filling mode
+          if (validatedInputs.process === 'filling') {
+            const enrichedError = solverError as any;
+            const devNote = enrichedError.devNote || {};
+            
+            // Build comprehensive devNote for Filling DfromT failures
+            enrichedError.devNote = {
+              ...devNote,
+              process: 'filling',
+              model: 'orifice',
+              t_target_s: t_target_SI,
+              epsilon: validatedInputs.epsilon || 0.01,
+              inputs_SI,
+              bracket: {
+                A_lo_m2: devNote.A_lo,
+                A_hi_m2: devNote.A_hi,
+                t_lo_s: devNote.t_lo,
+                t_hi_s: devNote.t_hi,
+                expansions: devNote.expansions || 0,
+                bracket_expansions: samplingData?.bracketInfo?.expansions || 0
+              },
+              forward_check: {
+                t_forward_s: devNote.t_computed,
+                residual: devNote.residual_time,
+                epsilon_used: devNote.epsilon_threshold,
+                choked: undefined, // To be filled by diagnostics if available
+                r_crit: undefined  // To be filled by diagnostics if available
+              },
+              reason: enrichedError.message || "orifice solver failed"
+            };
+            throw enrichedError;
+          }
+          throw solverError;
+        }
       }
     } catch (error) {
+      // Handle both isothermal and iterative solver errors
       if (error instanceof BracketError) {
         orifice_error = `Solver could not bracket the solution. Try increasing target time, widening A bounds, or set ε=1% (default).`;
       } else if (error instanceof IntegralError) {
@@ -1534,9 +1605,13 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
         const compError = error as ComputationError;
         orifice_error = `Orifice model ${compError.type} error: ${compError.message}`;
         if (compError.suggestions && compError.suggestions.length > 0) {
-          orifice_error += `. Suggestions: ${compError.suggestions.join('; ')}.`;
+          orifice_error += ` Suggestions: ${compError.suggestions.join(', ')}`;
         }
       } else {
+        // For Filling mode, re-throw enriched errors
+        if (validatedInputs.process === 'filling' && (error as any).devNote) {
+          throw error;
+        }
         orifice_error = `Orifice model failed: ${(error as Error).message}`;
       }
     }
@@ -1653,6 +1728,35 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
     }
     
     if (!D) {
+      // Build comprehensive error with all available context for Filling mode
+      if (validatedInputs.process === 'filling') {
+        const devNote = {
+          process: 'filling',
+          model: forcedModel || 'auto',
+          t_target_s: t_target_SI,
+          epsilon: validatedInputs.epsilon || 0.01,
+          inputs_SI,
+          bracket: samplingData ? {
+            A_lo_m2: samplingData.bracketInfo.A_lo,
+            A_hi_m2: samplingData.bracketInfo.A_hi,
+            t_lo_s: samplingData.bracketInfo.t_A_lo,
+            t_hi_s: samplingData.bracketInfo.t_A_hi,
+            expansions: samplingData.bracketInfo.expansions,
+            bracket_expansions: samplingData.bracketInfo.expansions
+          } : undefined,
+          forward_check: {
+            t_forward_s: undefined,
+            residual: undefined,
+            epsilon_used: validatedInputs.epsilon || 0.01,
+            choked: undefined,
+            r_crit: undefined
+          },
+          capillary_error,
+          orifice_error,
+          reason: "No valid solution found"
+        };
+        throw { message: 'No valid solution found', devNote };
+      }
       throw new Error('No valid solution found');
     }
     
