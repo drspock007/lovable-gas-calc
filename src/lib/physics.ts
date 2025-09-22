@@ -2,6 +2,7 @@
  * Gas Transfer Physics Calculations for Rigid Vessels
  * All units in SI: pressures in Pa (absolute), volumes in m³, temperatures in K, etc.
  * @fileoverview Complete implementation of capillary and orifice flow models
+ * @deprecated This monolithic file is being refactored into modular components under src/lib/physics/
  */
 
 import { brent } from './rootfind';
