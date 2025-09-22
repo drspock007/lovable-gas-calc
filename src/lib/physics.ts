@@ -40,13 +40,21 @@ import { capillaryDfromT_blowdown, capillaryDfromT_filling } from './physics/cap
 import { solveOrificeDfromT } from './physics/orifice-solvers';
 import { timeOrificeFromAreaSI } from './legacy-wrappers';
 
-// Re-export key functions that may be imported directly
+// Re-export key functions for easy access
 export { 
   orificeTfromD_blowdown,
   orificeTfromD_filling,
   timeOrificeFromAreaSI_legacy as timeOrificeFromAreaSI,
   sample_tA
 } from './physics/index';
+
+// Export standardized wrappers
+export { 
+  timeOrificeFillingFromAreaSI,
+  diameterFromTime_Filling,
+  timeOrificeBlowdownFromAreaSI,
+  diameterFromTime_Blowdown
+} from './physics-wrappers';
 
 // Legacy function that still needs to exist
 export function timeCapillaryFromAreaSI(SI: any, A_SI: number): number {

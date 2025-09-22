@@ -182,29 +182,47 @@ export function orificeTfromD_filling(inputs: ComputeInputs): number {
   
   if (!Ps) throw new Error('Supply pressure Ps required for filling');
   
+  // Validate filling inequalities: Ps > Pf > P1 > 0
+  if (P1 <= 0 || P2 <= P1 || Ps <= P2) {
+    throw new Error(`Invalid filling inequalities: need Ps(${Ps}) > Pf(${P2}) > P1(${P1}) > 0`);
+  }
+  
   // Guard epsilon
   const eps = clamp(epsilon, 1e-3, 0.1);
   
-  const rc = criticalRatio(gamma);
+  // Choking criterion: r_crit = (2/(γ+1))^(γ/(γ-1))
+  const r_crit = Math.pow(2/(gamma+1), gamma/(gamma-1));
   const cstar = Cstar(gamma, R, T);
   const kCoeff = K(gamma, R, T);
   const A = Math.PI * Math.pow(D!, 2) / 4;
   const Pf = P2 * (1 - eps);
   
-  // Critical pressure
-  const Pstar = Ps * rc;
+  // Check choking at vessel pressure: r = Pv/Ps
+  // Start with initial pressure, check if choked at beginning
+  const r_initial = P1 / Ps;
+  const r_final = P2 / Ps;
   
-  if (P2 >= Pstar) {
-    // Only subcritical flow
-    const I_sub = subcriticalIntegralFilling(Ps, P2, Pf, gamma);
-    return (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
-  } else {
-    // Split into sonic and subsonic phases
-    const t_sonic = (V / (R * T * Cd * A)) * Math.log(Pstar / P1) / cstar;
-    const I_sub = subcriticalIntegralFilling(Ps, Pstar, Pf, gamma);
-    const t_sub = (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
+  // Determine if flow is choked based on vessel pressure ratio
+  if (r_final < r_crit) {
+    // Flow becomes choked at some point - split integration
+    const P_choke = Ps * r_crit; // Pressure where choking occurs
     
-    return t_sonic + t_sub;
+    if (P1 < P_choke) {
+      // Start choked, then become unchoked
+      const t_choked = (V / (R * T * Cd * A)) * Math.log(P_choke / P1) / cstar;
+      const I_sub = subcriticalIntegralFilling(Ps, P_choke, Pf, gamma);
+      const t_sub = (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
+      
+      return t_choked + t_sub;
+    } else {
+      // Never choked - only subcritical flow
+      const I_sub = subcriticalIntegralFilling(Ps, P1, Pf, gamma);
+      return (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
+    }
+  } else {
+    // Never choked throughout filling - only subcritical flow  
+    const I_sub = subcriticalIntegralFilling(Ps, P1, Pf, gamma);
+    return (V / (R * T * Cd * A)) * (1 / kCoeff) * I_sub;
   }
 }
 
