@@ -49,7 +49,7 @@ export function timeCapillaryFromAreaSI(SI: any, A_SI: number): number {
   return result.t_SI_s;
 }
 
-// Legacy wrapper function
+// Legacy wrapper function for backward compatibility with old test formats
 export function timeCapillaryFromAreaSI_legacy(inputs: any, A_SI_m2: number): number {
   // Create a copy of inputs with computed diameter from area
   const D = Math.sqrt(4 * A_SI_m2 / Math.PI);
