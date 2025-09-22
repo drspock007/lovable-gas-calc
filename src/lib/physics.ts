@@ -849,23 +849,39 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
   
   while (expansions < maxExpansions) {
     try {
-      // 1) Calculate times at bracket endpoints
+      // 1) Calculate times at bracket endpoints with precise error diagnostics
       let t_lo = timeFunction(A_lo);
       let t_hi = timeFunction(A_hi);
       
-      // 2) Ensure monotone decreasing: t_lo >= t_hi (t decreases with increasing A)
+      // Check for non-finite bracket times (Diagnostic #1)
+      if (!Number.isFinite(t_lo) || !Number.isFinite(t_hi)) {
+        throw { 
+          message: "Non-finite bracket times", 
+          devNote: { 
+            reason: "non-finite bracket times",
+            t_lo,
+            t_hi,
+            A_lo_m2: A_lo,
+            A_hi_m2: A_hi,
+            process: inputs.process,
+            bracket_expansions: expansions
+          } 
+        };
+      }
+      
+      // 2) Normalize orientation: ensure t_lo >= t_hi (monotone decreasing)
       if (t_lo < t_hi) {
         // Swap the bounds to ensure proper monotonicity
         [A_lo, A_hi] = [A_hi, A_lo];
         [t_lo, t_hi] = [t_hi, t_lo];
-        console.log(`🔄 Monotonicity fix: swapped bounds to ensure t_lo(${t_lo.toFixed(2)}s) >= t_hi(${t_hi.toFixed(2)}s)`);
+        console.log(`🔄 Bracket orientation fixed: swapped bounds to ensure t_lo(${t_lo.toFixed(2)}s) >= t_hi(${t_hi.toFixed(2)}s)`);
       }
       
       // 3) Test inclusion: t_hi <= t_target <= t_lo (monotone decreasing)
       const inside = (t_hi <= t_target && t_target <= t_lo);
       
       if (!inside) {
-        // Auto-expand bounds
+        // Auto-expand bounds (logged for devNote)
         A_lo /= 10; // Smaller A -> larger time
         A_hi = Math.min(A_hi * 10, A_hi_max); // Larger A -> smaller time, respect physical limit
         expansions++;
@@ -876,6 +892,11 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
         break;
       }
     } catch (error) {
+      // Re-throw precise diagnostic errors immediately
+      if ((error as any).devNote?.reason) {
+        throw error;
+      }
+      
       // If evaluation fails, try expanding
       A_lo /= 10;
       A_hi = Math.min(A_hi * 10, A_hi_max);
@@ -885,7 +906,7 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
   }
   
   if (expansions >= maxExpansions) {
-    // Final inclusion test for error message
+    // Final inclusion test for precise diagnostic (Diagnostic #2)
     try {
       let t_lo = timeFunction(A_lo);
       let t_hi = timeFunction(A_hi);
@@ -899,16 +920,21 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
       throw { 
         message: "Target time out of bracket", 
         devNote: { 
-          t_target_SI: t_target, 
+          reason: "Target time out of bracket",
+          t_target_s: t_target, 
           t_lo, 
           t_hi, 
-          A_lo, 
-          A_hi,
-          expansions,
-          max_expansions: maxExpansions
+          A_lo_m2: A_lo, 
+          A_hi_m2: A_hi,
+          bracket_expansions: expansions
         } 
       };
     } catch (evalError) {
+      // Check if it's our precise diagnostic error
+      if ((evalError as any).devNote?.reason) {
+        throw evalError;
+      }
+      
       throw new BracketError(
         `Solver could not bracket the solution after ${maxExpansions} expansions`,
         { A_lo, A_hi, expansions, t_target }
@@ -998,18 +1024,19 @@ function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: Samp
     const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
     
     if (residual_time > epsilon_threshold) {
-      // Hit boundary without satisfying residual - reject
+      // Hit boundary without satisfying residual - reject (Diagnostic #3)
       const t_lo = timeFunction(A_lo);
       const t_hi = timeFunction(A_hi);
       throw { 
-        message: "Could not solve within bracket (hit bound)", 
+        message: "Hit bracket bound (no root inside)", 
         devNote: { 
-          A_lo, 
-          A_hi, 
-          t_lo, 
-          t_hi, 
-          t_target_SI: t_target,
-          A_solution,
+          reason: "Hit bracket bound (no root inside)",
+          A_lo_m2: A_lo, 
+          A_hi_m2: A_hi, 
+          t_lo_s: t_lo, 
+          t_hi_s: t_hi, 
+          t_target_s: t_target,
+          A_solution: A_solution,
           residual_time,
           epsilon_threshold,
           boundary_hit: isAtLowerBound ? 'A_lo' : 'A_hi'
