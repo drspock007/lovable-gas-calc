@@ -21,30 +21,41 @@ function toAbsSI(value: any, unit: string, mode: string, Patm: number): number {
 }
 
 export function buildSI(values: any) {
-  // Volume with multi-path fallbacks
-  const Vraw = values?.V?.value ?? values?.vesselVolume?.value ?? values?.volume?.value ?? values?.V;
-  const Vunit = values?.V?.unit ?? values?.vesselVolume?.unit ?? values?.volume?.unit ?? "m3";
-  const V_SI_m3 = toSI_Volume(Number(String(Vraw ?? "0").replace(",", ".")), Vunit);
+  // Collecte tolérante par alias (prends la première valeur trouvée)
+  
+  // Volume
+  const V = values?.V?.value ?? values?.vesselVolume?.value ?? values?.volume?.value ?? values?.V;
+  const Vunit = values?.V?.unit ?? values?.vesselVolume?.unit ?? values?.volume?.unit ?? "L";
+  const V_SI_m3 = toSI_Volume(Number(String(V ?? "0").replace(",", ".")), Vunit);
 
-  // Temperature with multi-path fallbacks
-  const Traw = values?.T?.value ?? values?.temperature?.value ?? values?.T ?? values?.temp;
+  // Temperature 
+  const T = values?.T?.value ?? values?.temperature?.value ?? values?.T ?? values?.temp;
   const Tunit = values?.T?.unit ?? values?.temperature?.unit ?? "C";
-  const T_K = toSI_Temperature(Number(String(Traw ?? "15").replace(",", ".")), Tunit);
+  const T_K = toSI_Temperature(Number(String(T ?? "15").replace(",", ".")), Tunit);
 
-  // Pressures with multi-path fallbacks
-  const P1v = values?.P1?.value ?? values?.initialPressure?.value ?? values?.p1?.value ?? values?.P1;
+  // Pressures avec collecte étendue pour Filling
+  const P1 = values?.P1?.value ?? values?.initialPressure?.value ?? values?.p1?.value ?? values?.P1;
   const P1u = values?.P1?.unit ?? values?.initialPressure?.unit ?? values?.p1?.unit ?? values?.P1_unit ?? "kPa";
-  const P2v = values?.P2?.value ?? values?.finalPressure?.value ?? values?.p2?.value ?? values?.P2;
-  const P2u = values?.P2?.unit ?? values?.finalPressure?.unit ?? values?.p2?.unit ?? values?.P2_unit ?? "kPa";
+  
+  const Pf = values?.P2?.value ?? values?.finalPressure?.value ?? values?.targetPressure?.value ?? values?.p2?.value ?? values?.P2;
+  const Pfu = values?.P2?.unit ?? values?.finalPressure?.unit ?? values?.targetPressure?.unit ?? values?.p2?.unit ?? values?.P2_unit ?? "kPa";
+  
+  const Ps = values?.Ps?.value ?? values?.supplyPressure?.value;
+  const Psu = values?.Ps?.unit ?? values?.supplyPressure?.unit ?? "kPa";
+
+  // Mode et pression atmosphérique
   const mode = values?.pressureInputMode ?? "gauge";
   const Patm = resolvePatm(values);
-  const P1_Pa = toAbsSI(P1v, P1u, mode, Patm);
-  const P2_Pa = toAbsSI(P2v, P2u, mode, Patm);
 
-  // Length with multi-path fallbacks
-  const Lraw = values?.L?.value ?? values?.length?.value ?? values?.L_SI_m ?? values?.L_m ?? values?.orificeLength?.value;
+  // Conversions en SI absolues
+  const P1_Pa = toAbsSI(P1, P1u, mode, Patm);
+  const Pf_Pa = toAbsSI(Pf, Pfu, mode, Patm);
+  const Ps_Pa = toAbsSI(Ps, Psu, mode, Patm);
+
+  // Length
+  const L = values?.L?.value ?? values?.length?.value ?? values?.orificeLength?.value ?? values?.L_SI_m ?? values?.L_m;
   const Lunit = values?.L?.unit ?? values?.length?.unit ?? "mm";
-  const L_SI_m = toSI_Length(Number(String(Lraw ?? "2").replace(",", ".")), Lunit);
+  const L_SI_m = toSI_Length(Number(String(L ?? "2").replace(",", ".")), Lunit);
 
   // Coefficients and gas
   const gas = values?.gas;
@@ -52,24 +63,38 @@ export function buildSI(values: any) {
   const epsilon = Number(values?.epsilon ?? 0.01);
   const regime = values?.regime ?? "isothermal";
 
+  // Objet SI complet avec alias rétrocompat
   const result = {
     V_SI_m3,
-    P1_Pa,
-    P2_Pa,
     T_K,
+    P1_Pa,
+    Pf_Pa,
+    Ps_Pa,
+    P2_Pa: Pf_Pa, // Alias pour rétrocompat
     L_SI_m,
     L_m: L_SI_m, // Backward compatibility
     gas,
     Cd,
     epsilon,
-    regime
+    regime,
+    pressureInputMode: mode,
+    Patm_SI: Patm
   };
 
-  // Validation check
-  const required = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
-  for (const k of required) {
-    if (!Number.isFinite((result as any)[k])) {
-      throw new Error(`buildSI: missing or invalid ${k}`);
+  // Garde pour Filling - vérification stricte des 5 valeurs critiques
+  if (values?.process === "filling") {
+    for (const k of ["V_SI_m3", "T_K", "P1_Pa", "Pf_Pa", "Ps_Pa"]) {
+      if (!Number.isFinite((result as any)[k])) {
+        throw new Error(`buildSI: missing ${k} (required for Filling mode)`);
+      }
+    }
+  } else {
+    // Validation standard pour autres modes
+    const required = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
+    for (const k of required) {
+      if (!Number.isFinite((result as any)[k])) {
+        throw new Error(`buildSI: missing or invalid ${k}`);
+      }
     }
   }
 
