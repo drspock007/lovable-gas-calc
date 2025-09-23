@@ -119,4 +119,11 @@ export interface SamplingData {
   };
   monotonic: boolean;
   warnings: string[];
+  debugNote?: {
+    t_target_s: number;
+    iterations: number;
+    residual_time: number;
+    A_final_m2: number;
+    candidate_source: "mid" | "lo" | "hi";
+  };
 }

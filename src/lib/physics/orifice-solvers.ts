@@ -280,89 +280,184 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
     samplingData.warnings.push(`Sampling failed: ${(error as Error).message}`);
   }
   
-  // Use Brent's method for robust root finding with f(A) = t(A) - t_target_SI
-  const A_solution = brent(objectiveFunction, [A_lo, A_hi], {
-    tolerance: 1e-6,
-    maxIterations: 200
-  });
+  // Use Brent's method on f(A) = t(A) - t_target with custom convergence criteria
+  let iterations = 0;
+  let candidate_source: "mid" | "lo" | "hi" = "mid";
+  const epsilon_used = Math.max(inputs.epsilon || 0.01, 0.01);
   
-  if (A_solution === null) {
+  // Custom Brent implementation to track convergence details
+  let a = A_lo, b = A_hi;
+  let fa = objectiveFunction(a), fb = objectiveFunction(b);
+  
+  if (Math.sign(fa) === Math.sign(fb)) {
     throw new BracketError(
-      'Root finding failed to converge - solver could not bracket the solution',
-      { A_lo, A_hi, method: 'Brent', t_target }
+      'Root function not properly bracketed after all expansions',
+      { A_lo, A_hi, fa, fb, t_target }
     );
   }
   
-  // CRITICAL: Never take the bound as solution
-  // Check if algorithm terminated at a boundary without satisfying residual
-  const boundaryTolerance = 1e-8;
-  const isAtLowerBound = Math.abs(A_solution - A_lo) < boundaryTolerance;
-  const isAtUpperBound = Math.abs(A_solution - A_hi) < boundaryTolerance;
+  let c = a, fc = fa, d = 0, e = 0;
+  const tolerance = 1e-12;
+  const maxIterations = 200;
   
-  if (isAtLowerBound || isAtUpperBound) {
-    // Verify residual before rejecting
-    const t_computed = timeFunction(A_solution);
-    const residual_time = Math.abs(t_computed - t_target) / Math.max(t_target, 1e-9);
-    const epsilon_threshold = Math.max(inputs.epsilon || 0.01, 0.01);
+  while (iterations < maxIterations) {
+    iterations++;
     
-    if (residual_time > epsilon_threshold) {
-      // Hit boundary without satisfying residual (Diagnostic #3)
-      throw { 
-        message: "Hit bracket bound (no root inside)", 
-        devNote: { 
-          reason: "Hit bracket bound (no root inside)",
-          A_lo_m2: A_lo, 
-          A_hi_m2: A_hi, 
-          t_lo_s: samplingData.bracketInfo.t_A_lo, 
-          t_hi_s: samplingData.bracketInfo.t_A_hi, 
-          t_target_s: t_target,
-          boundary_hit: isAtLowerBound ? 'lower' : 'upper',
-          A_solution_m2: A_solution,
-          residual_time,
-          epsilon_threshold
-        } 
+    if (Math.abs(fc) < Math.abs(fb)) {
+      a = b; b = c; c = a;
+      fa = fb; fb = fc; fc = fa;
+    }
+    
+    const tol = 2 * tolerance * Math.abs(b) + tolerance;
+    const m = (c - b) / 2;
+    
+    // Check convergence: |f(A*)|/max(t_target_s,1e-9) ≤ max(ε,0.01)
+    const residual_criterion = Math.abs(fb) / Math.max(t_target, 1e-9);
+    if (residual_criterion <= epsilon_used || Math.abs(m) <= tol) {
+      // Determine candidate source
+      const boundaryTolerance = 1e-8;
+      if (Math.abs(b - A_lo) < boundaryTolerance) {
+        candidate_source = "lo";
+      } else if (Math.abs(b - A_hi) < boundaryTolerance) {
+        candidate_source = "hi";
+      } else {
+        candidate_source = "mid";
+      }
+      
+      // Check if terminated at boundary without proper convergence
+      if ((candidate_source === "lo" || candidate_source === "hi") && residual_criterion > epsilon_used) {
+        // Calculate bracket endpoint values for error reporting
+        const t_lo_final = timeFunction(A_lo);
+        const t_hi_final = timeFunction(A_hi);
+        const f_lo_final = t_lo_final - t_target;
+        const f_hi_final = t_hi_final - t_target;
+        
+        throw { 
+          message: "Hit bracket bound (no root inside)", 
+          devNote: { 
+            reason: "Hit bracket bound (no root inside)",
+            A_lo_m2: A_lo, 
+            A_hi_m2: A_hi, 
+            t_lo_s: t_lo_final, 
+            t_hi_s: t_hi_final, 
+            f_lo: f_lo_final, 
+            f_hi: f_hi_final, 
+            t_target_s: t_target,
+            A_final_m2: b,
+            iterations,
+            residual_criterion,
+            candidate_source,
+            epsilon_used
+          } 
+        };
+      }
+      
+      // Successful convergence
+      const A_solution = b;
+      const t_forward = timeFunction(A_solution);
+      const residual_time = Math.abs(t_forward - t_target) / Math.max(t_target, 1e-9);
+      
+      // Final verification with detailed debug info
+      if (residual_time > epsilon_used) {
+        // Calculate correct choking information based on process
+        let choking: any = {};
+        if (inputs.process === 'filling' && inputs.Ps) {
+          const r_crit = criticalPressureRatio(inputs.gas.gamma);
+          const r = inputs.P1 / inputs.Ps; // Pv/Ps
+          choking = { r_crit, choked: r < r_crit, r };
+        } else if (inputs.process === 'blowdown') {
+          const r_crit = criticalPressureRatio(inputs.gas.gamma);
+          const r = inputs.P2 / inputs.P1; // Pdown/Pup
+          choking = { r_crit, choked: r < r_crit, r };
+        }
+        
+        throw { 
+          message: "Result rejected by residual check", 
+          devNote: { 
+            reason: "Result rejected by residual check",
+            t_forward_s: t_forward, 
+            t_target_s: t_target, 
+            residual_time, 
+            epsilon_used,
+            bounds_used: { A_lo_m2: A_lo, A_hi_m2: A_hi },
+            choking,
+            iterations,
+            A_final_m2: A_solution,
+            candidate_source
+          } 
+        };
+      }
+
+      // Save successful bracket for future use
+      saveBracketToCache(A_lo, A_hi, inputs.process, gasName);
+      
+      const D = Math.sqrt(4 * A_solution / Math.PI);
+      
+      // Store debug info in sampling data
+      samplingData.debugNote = {
+        t_target_s: t_target,
+        iterations,
+        residual_time,
+        A_final_m2: A_solution,
+        candidate_source
       };
-    }
-  }
-
-  // Final forward verification (Diagnostic #4) - same model/path for Filling
-  const t_forward = timeFunction(A_solution);
-  const residual = Math.abs(t_forward - t_target) / Math.max(t_target, 1e-9);
-  const epsilon_used = Math.max(inputs.epsilon || 0.01, 0.01);
-  
-  if (residual > epsilon_used) {
-    // Calculate correct choking information based on process
-    let choking: any = {};
-    if (inputs.process === 'filling' && inputs.Ps) {
-      // Filling: use Pv/Ps (vessel pressure / supply pressure)
-      const r_crit = criticalPressureRatio(inputs.gas.gamma);
-      const r = inputs.P1 / inputs.Ps; // Pv/Ps
-      choking = { r_crit, choked: r < r_crit, r };
-    } else if (inputs.process === 'blowdown') {
-      // Blowdown: use downstream/upstream
-      const r_crit = criticalPressureRatio(inputs.gas.gamma);
-      const r = inputs.P2 / inputs.P1; // Pdown/Pup
-      choking = { r_crit, choked: r < r_crit, r };
+      
+      return { D, sampling: samplingData };
     }
     
-    throw { 
-      message: "Result rejected by residual check", 
-      devNote: { 
-        reason: "Result rejected by residual check",
-        t_forward_s: t_forward, 
-        t_target_s: t_target, 
-        residual, 
-        epsilon_used,
-        bounds_used: { A_lo_m2: A_lo, A_hi_m2: A_hi },
-        choking
-      } 
-    };
+    // Brent's method continuation
+    if (Math.abs(e) >= tol && Math.abs(fa) > Math.abs(fb)) {
+      const s = fb / fa;
+      let p, q;
+      
+      if (a === c) {
+        // Linear interpolation
+        p = 2 * m * s;
+        q = 1 - s;
+      } else {
+        // Inverse quadratic interpolation
+        q = fa / fc;
+        const r = fb / fc;
+        p = s * (2 * m * q * (q - r) - (b - a) * (r - 1));
+        q = (q - 1) * (r - 1) * (s - 1);
+      }
+      
+      if (p > 0) q = -q;
+      p = Math.abs(p);
+      
+      if (2 * p < Math.min(3 * m * q - Math.abs(tol * q), Math.abs(e * q))) {
+        e = d;
+        d = p / q;
+      } else {
+        d = m;
+        e = d;
+      }
+    } else {
+      d = m;
+      e = d;
+    }
+    
+    a = b;
+    fa = fb;
+    
+    if (Math.abs(d) > tol) {
+      b += d;
+    } else {
+      b += Math.sign(m) * tol;
+    }
+    
+    fb = objectiveFunction(b);
+    
+    if (Math.sign(fb) === Math.sign(fc)) {
+      c = a;
+      fc = fa;
+      d = e = b - a;
+    }
   }
-
-  // Save successful bracket for future use
-  saveBracketToCache(A_lo, A_hi, inputs.process, gasName);
   
-  const D = Math.sqrt(4 * A_solution / Math.PI);
-  
-  return { D, sampling: samplingData };
+  // Failed to converge
+  throw new BracketError(
+    `Root finding failed to converge after ${maxIterations} iterations`,
+    { A_lo, A_hi, method: 'Brent', t_target, iterations }
+  );
 }
