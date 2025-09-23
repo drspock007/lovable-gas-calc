@@ -4,7 +4,7 @@
  */
 
 import { toSI_Pressure, absFromGauge, patmFromAltitude } from "@/lib/pressure-units";
-import { toSI_Volume } from "@/lib/units";
+import { toSI_Volume, toSI_Time, type TimeUnit } from "@/lib/units";
 import { toSI_Temperature } from "@/lib/units";
 import { toSI_Length } from "@/lib/length-units";
 
@@ -57,13 +57,25 @@ export function buildSI(values: any) {
   const Lunit = values?.L?.unit ?? values?.length?.unit ?? "mm";
   const L_SI_m = toSI_Length(Number(String(L ?? "2").replace(",", ".")), Lunit);
 
+  // Time with enhanced parsing for DfromT mode
+  const t_raw = values?.time?.value ?? values?.t?.value ?? values?.time ?? values?.t;
+  const t_unit = values?.time?.unit ?? values?.t?.unit ?? "s";
+  let t_target_s: number | undefined;
+  
+  if (t_raw !== undefined) {
+    t_target_s = toSI_Time(Number(String(t_raw).replace(",",".").trim()), t_unit as TimeUnit);
+    if (!Number.isFinite(t_target_s) || t_target_s <= 0) {
+      throw { message:"Invalid target time", devNote:{ raw: t_raw, unit: t_unit, parsed: Number(String(t_raw).replace(",",".").trim()) } };
+    }
+  }
+
   // Coefficients and gas
   const gas = values?.gas;
   const Cd = Number(values?.Cd ?? 0.62);
   const epsilon = Number(values?.epsilon ?? 0.01);
   const regime = values?.regime ?? "isothermal";
 
-  // Objet SI complet avec alias rétrocompat
+  // Objet SI complet avec alias rétrocompat et t_target_s
   const result = {
     V_SI_m3,
     T_K,
@@ -73,6 +85,7 @@ export function buildSI(values: any) {
     P2_Pa: Pf_Pa, // Alias pour rétrocompat
     L_SI_m,
     L_m: L_SI_m, // Backward compatibility
+    t_target_s, // Include validated target time
     gas,
     Cd,
     epsilon,

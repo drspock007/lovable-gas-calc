@@ -151,19 +151,25 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
   };
   
   try {
-    // Robust target time reading - compatible with current interface but extensible
-    const raw = inputs?.t; // For now, read from 't' field since that's what ComputeInputs has
-    const unit = "s"; // Default unit, could be extended later for UI inputs with unit selection
-    const parsed = Number(String(raw).replace(",", ".").trim());
-    const t_target_SI = toSI_Time(parsed, unit as TimeUnit);
+    // Parse target time from values object with enhanced tolerance
+    const t_raw = inputs?.t; // Direct time value from ComputeInputs
+    const t_unit = "s"; // Default to seconds for ComputeInputs
+    const t_target_s = toSI_Time(Number(String(t_raw).replace(",",".").trim()), t_unit as TimeUnit);
     
-    // Guard: prevent fallback on invalid time
-    if (!Number.isFinite(t_target_SI) || t_target_SI <= 0) {
-      throw { message: "Invalid target time", devNote: { raw, unit, parsed, t_target_SI, error: "NaN, infinite, or ≤0" } };
+    // Validate time target with precise devNote
+    if (!Number.isFinite(t_target_s) || t_target_s <= 0) {
+      throw { 
+        message: "Invalid target time", 
+        devNote: { 
+          raw: t_raw, 
+          parsed: Number(String(t_raw).replace(",",".").trim()),
+          error: !Number.isFinite(t_target_s) ? "NaN" : "≤0"
+        } 
+      };
     }
     
-    // Update inputs with validated time
-    const validatedInputs = { ...inputs, t: t_target_SI };
+    // Update inputs with validated time and include t_target_s in context
+    const validatedInputs = { ...inputs, t: t_target_s };
     
     let D_capillary: number | undefined;
     let D_orifice: number | undefined;
@@ -192,7 +198,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
             ...enrichedError.devNote,
             process: 'filling',
             model: 'capillary',
-            t_target_s: t_target_SI,
+            t_target_s: t_target_s,
             epsilon: validatedInputs.epsilon || 0.01,
             inputs_SI,
             reason: enrichedError.message || "capillary solver failed"
@@ -295,7 +301,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
               ...devNote,
               process: 'filling',
               model: 'orifice',
-              t_target_s: t_target_SI,
+              t_target_s: t_target_s,
               epsilon: validatedInputs.epsilon || 0.01,
               inputs_SI,
               bracket: {
@@ -458,7 +464,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
         const devNote = {
           process: 'filling',
           model: forcedModel || 'auto',
-          t_target_s: t_target_SI,
+          t_target_s: t_target_s,
           epsilon: validatedInputs.epsilon || 0.01,
           inputs_SI,
           bracket: samplingData ? {
