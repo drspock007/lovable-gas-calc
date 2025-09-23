@@ -293,6 +293,6 @@ export function diameterFromTime_Blowdown(SI: any, t_target: number): number {
     t: t_target
   };
   
-  const result = solveOrificeDfromT(inputs);
+  const result = solveOrificeDfromT(inputs, SI);
   return result.D;
 }

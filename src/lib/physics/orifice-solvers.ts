@@ -6,6 +6,7 @@ import { brent } from '../rootfind';
 import { clamp, criticalPressureRatio } from './math-utils';
 import { BracketError } from './errors';
 import { orificeTfromD_blowdown, orificeTfromD_filling } from './orifice';
+import { timeOrificeFillingFromAreaSI, timeOrificeBlowdownFromAreaSI } from '../physics-wrappers';
 import type { ComputeInputs, SamplingData } from './types';
 
 /**
@@ -57,11 +58,13 @@ function loadBracketFromCache(process: string, gasName: string): [number, number
 /**
  * Solve for diameter from time using robust root finding with auto-bracketing
  * @param inputs Computation inputs
+ * @param SI SI conversion object for forward verification
  * @returns Computed diameter [m]
  */
-export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling?: SamplingData } {
+export function solveOrificeDfromT(inputs: ComputeInputs, SI?: any): { D: number; sampling?: SamplingData } {
   const t_target = inputs.t!;
   const gasName = inputs.gas.name || 'unknown';
+  const epsilon_used = Math.max(inputs.epsilon || 0.01, 0.01);
   
   // Define objective function f(A) = t_model(A) - t_target
   const objectiveFunction = (A: number): number => {
@@ -283,7 +286,6 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
   // Use Brent's method on f(A) = t(A) - t_target with custom convergence criteria
   let iterations = 0;
   let candidate_source: "mid" | "lo" | "hi" = "mid";
-  const epsilon_used = Math.max(inputs.epsilon || 0.01, 0.01);
   
   // Custom Brent implementation to track convergence details
   let a = A_lo, b = A_hi;
@@ -354,36 +356,53 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
       
       // Successful convergence
       const A_solution = b;
-      const t_forward = timeFunction(A_solution);
-      const residual_time = Math.abs(t_forward - t_target) / Math.max(t_target, 1e-9);
+      
+      // Use the SAME forward as the solver for verification
+      let t_fwd: number;
+      if (SI) {
+        // Use exact same forward as solver (preferred when SI available)
+        if (inputs.process === 'filling') {
+          t_fwd = timeOrificeFillingFromAreaSI(SI, A_solution);
+        } else {
+          t_fwd = timeOrificeBlowdownFromAreaSI(SI, A_solution);
+        }
+      } else {
+        // Fallback to internal time function
+        t_fwd = timeFunction(A_solution);
+      }
+      
+      const residual = Math.abs(t_fwd - t_target) / Math.max(t_target, 1e-9);
       
       // Final verification with detailed debug info
-      if (residual_time > epsilon_used) {
+      if (residual > epsilon_used) {
         // Calculate correct choking information based on process
-        let choking: any = {};
+        let r_crit: number, choked: boolean;
         if (inputs.process === 'filling' && inputs.Ps) {
-          const r_crit = criticalPressureRatio(inputs.gas.gamma);
+          r_crit = criticalPressureRatio(inputs.gas.gamma);
           const r = inputs.P1 / inputs.Ps; // Pv/Ps
-          choking = { r_crit, choked: r < r_crit, r };
+          choked = r < r_crit;
         } else if (inputs.process === 'blowdown') {
-          const r_crit = criticalPressureRatio(inputs.gas.gamma);
+          r_crit = criticalPressureRatio(inputs.gas.gamma);
           const r = inputs.P2 / inputs.P1; // Pdown/Pup
-          choking = { r_crit, choked: r < r_crit, r };
+          choked = r < r_crit;
+        } else {
+          r_crit = 0;
+          choked = false;
         }
         
         throw { 
           message: "Result rejected by residual check", 
           devNote: { 
-            reason: "Result rejected by residual check",
-            t_forward_s: t_forward, 
+            process: inputs.process,
+            model: "orifice",
             t_target_s: t_target, 
-            residual_time, 
+            t_fwd, 
+            residual, 
             epsilon_used,
-            bounds_used: { A_lo_m2: A_lo, A_hi_m2: A_hi },
-            choking,
-            iterations,
-            A_final_m2: A_solution,
-            candidate_source
+            bounds: { A_lo: A_lo, A_hi: A_hi },
+            A_star: A_solution,
+            r_crit,
+            choked
           } 
         };
       }
@@ -397,7 +416,7 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
       samplingData.debugNote = {
         t_target_s: t_target,
         iterations,
-        residual_time,
+        residual_time: residual,
         A_final_m2: A_solution,
         candidate_source
       };

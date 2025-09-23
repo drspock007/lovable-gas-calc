@@ -76,8 +76,10 @@ export function timeCapillaryFromAreaSI_legacy(inputs: any, A_SI_m2: number): nu
   }
 }
 
-// Legacy solver with retry - just alias to the main solver
-export const solveOrificeDfromTWithRetry = solveOrificeDfromT;
+// Legacy solver with retry - wrapper that maintains compatibility
+export function solveOrificeDfromTWithRetry(inputs: import('./physics/types').ComputeInputs): { D: number; sampling?: import('./physics/types').SamplingData } {
+  return solveOrificeDfromT(inputs); // Call without SI for backward compatibility
+}
 
 // Legacy wrapper for tests that use old SI format
 export function timeOrificeFromAreaSI_old(SI: any, A_SI_m2: number): number {

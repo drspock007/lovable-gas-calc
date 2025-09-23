@@ -281,7 +281,7 @@ export function computeDfromT(inputs: ComputeInputs): ComputeOutputs {
       // Fall back to iterative solver only if isothermal completely failed or regime is adiabatic
       if (!D_orifice || (orifice_isothermal_failed && !isothermal_residual_marginal)) {
         try {
-          const result = solveOrificeDfromT(inputs);
+          const result = solveOrificeDfromT(inputs, inputs_SI);
           D_orifice = result.D;
           samplingData = result.sampling;
         } catch (solverError) {
