@@ -11,8 +11,23 @@ export function useComputeTimeFromD(values: any) {
 
   async function onCompute() {
     setError(null);
+    let SI: any;
     try {
-      const SI = buildSI(values);
+      SI = buildSI(values);
+      
+      // Garde Filling AVANT le forward Time-from-D (orifice)
+      if (values.process === "filling") {
+        if (!(SI.Ps_Pa > SI.Pf_Pa && SI.Pf_Pa > SI.P1_Pa && SI.P1_Pa > 0)) {
+          throw { 
+            message: "Invalid filling inequalities (require Ps_abs > Pf_abs > P1_abs > 0)",
+            devNote: { 
+              process: "filling", 
+              inputs_SI: { Ps_Pa: SI.Ps_Pa, Pf_Pa: SI.Pf_Pa, P1_Pa: SI.P1_Pa } 
+            } 
+          };
+        }
+      }
+      
       const res = computeTimeFromDiameter({
         ...values,
         __SI__: SI,
@@ -22,8 +37,10 @@ export function useComputeTimeFromD(values: any) {
       setResult(res);
       setDevNote(res.debugNote ?? null);
     } catch (e: any) {
-      setError(e?.message ?? "Compute failed");
-      setDevNote(e?.devNote ?? null);
+      const message = e?.message || "Calculation failed";
+      const devNote = e?.devNote ?? { reason: message, inputs_SI: SI };
+      setError(message);
+      setDevNote(devNote);
     }
   }
 

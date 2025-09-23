@@ -98,7 +98,10 @@ export function buildSI(values: any) {
   if (values?.process === "filling") {
     for (const k of ["V_SI_m3", "T_K", "P1_Pa", "Pf_Pa", "Ps_Pa"]) {
       if (!Number.isFinite((result as any)[k])) {
-        throw new Error(`buildSI: missing ${k} (required for Filling mode)`);
+        throw { 
+          message: `buildSI: missing ${k}`, 
+          devNote: { inputs_UI: values, inputs_SI: result } 
+        };
       }
     }
   } else {
@@ -106,7 +109,10 @@ export function buildSI(values: any) {
     const required = ["V_SI_m3", "P1_Pa", "P2_Pa", "T_K"];
     for (const k of required) {
       if (!Number.isFinite((result as any)[k])) {
-        throw new Error(`buildSI: missing or invalid ${k}`);
+        throw { 
+          message: `buildSI: missing or invalid ${k}`, 
+          devNote: { inputs_UI: values, inputs_SI: result } 
+        };
       }
     }
   }

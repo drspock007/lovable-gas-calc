@@ -13,6 +13,20 @@ import { computeTimeFromDiameter } from "@/lib/pipeline-time-from-d";
  */
 export async function computeTimeFromD(ui: any) {
   const SI = buildSI(ui);
+  
+  // Garde Filling AVANT le forward Time-from-D (orifice)
+  if (ui.process === "filling") {
+    if (!(SI.Ps_Pa > SI.Pf_Pa && SI.Pf_Pa > SI.P1_Pa && SI.P1_Pa > 0)) {
+      throw { 
+        message: "Invalid filling inequalities (require Ps_abs > Pf_abs > P1_abs > 0)",
+        devNote: { 
+          process: "filling", 
+          inputs_SI: { Ps_Pa: SI.Ps_Pa, Pf_Pa: SI.Pf_Pa, P1_Pa: SI.P1_Pa } 
+        } 
+      };
+    }
+  }
+  
   const res = computeTimeFromDiameter({ 
     ...ui, 
     __SI__: SI, 
