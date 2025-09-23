@@ -116,13 +116,13 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
     console.log(`🔧 Physical constraint applied: A_hi reduced from ${A_hi_original.toExponential(3)} to ${A_hi.toExponential(3)} (D_eq=${(D_eq*1000).toFixed(1)}mm, D_max=${(D_max_physical*1000).toFixed(1)}mm, k=${k_physical})`);
   }
   
-  // Test inclusion and auto-expand based on time range
+  // Test inclusion and auto-expand based on root function f(A) = t(A) - t_target
   let expansions = 0;
   const maxExpansions = 4; // Max 4 expansions as requested
   
   while (expansions < maxExpansions) {
     try {
-      // 1) Calculate times at bracket endpoints with precise error diagnostics
+      // 1) Calculate t_lo = t(A_lo) and t_hi = t(A_hi) with forward of correct process
       let t_lo = timeFunction(A_lo);
       let t_hi = timeFunction(A_hi);
       
@@ -142,26 +142,29 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
         };
       }
       
-      // 2) Normalize orientation: ensure t_lo >= t_hi (monotone decreasing)
+      // 2) Normalize orientation: if (t_lo < t_hi) then swap to ensure t_lo >= t_hi (t(A) decreases with A)
       if (t_lo < t_hi) {
-        // Swap the bounds to ensure proper monotonicity
         [A_lo, A_hi] = [A_hi, A_lo];
         [t_lo, t_hi] = [t_hi, t_lo];
-        console.log(`🔄 Bracket orientation fixed: swapped bounds to ensure t_lo(${t_lo.toFixed(2)}s) >= t_hi(${t_hi.toFixed(2)}s)`);
+        console.log(`🔄 Bracket orientation normalized: swapped bounds to ensure t_lo(${t_lo.toFixed(2)}s) >= t_hi(${t_hi.toFixed(2)}s)`);
       }
       
-      // 3) Test inclusion: t_hi <= t_target <= t_lo (monotone decreasing)
-      const inside = (t_hi <= t_target && t_target <= t_lo);
+      // 3) Construct root function: f_lo = t_lo - t_target_s; f_hi = t_hi - t_target_s
+      const f_lo = t_lo - t_target;
+      const f_hi = t_hi - t_target;
+      
+      // 4) Test inclusion: inside = (f_lo >= 0 && f_hi <= 0)
+      const inside = (f_lo >= 0 && f_hi <= 0);
       
       if (!inside) {
-        // Auto-expand bounds (logged for devNote)
-        A_lo /= 10; // Smaller A -> larger time
-        A_hi = Math.min(A_hi * 10, A_hi_max); // Larger A -> smaller time, respect physical limit
+        // Auto-expand bounds (A_lo/=10, A_hi*=10) and recalculate
+        A_lo /= 10; // Smaller A -> larger time -> larger f
+        A_hi = Math.min(A_hi * 10, A_hi_max); // Larger A -> smaller time -> smaller f, respect physical limit
         expansions++;
-        console.log(`Expansion ${expansions}: t_target=${t_target}s not in [${t_hi}s, ${t_lo}s], expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
+        console.log(`Expansion ${expansions}: f not bracketed (f_lo=${f_lo.toFixed(3)}, f_hi=${f_hi.toFixed(3)}), expanding to A=[${A_lo.toExponential(3)}, ${A_hi.toExponential(3)}]`);
       } else {
-        // Target time is properly included in bracket
-        console.log(`✅ Target time ${t_target}s is included in [${t_hi}s, ${t_lo}s], proceeding with solving`);
+        // Root function is properly bracketed
+        console.log(`✅ Root function bracketed: f_lo=${f_lo.toFixed(3)} >= 0, f_hi=${f_hi.toFixed(3)} <= 0, proceeding with solving`);
         break;
       }
     } catch (error) {
@@ -190,6 +193,10 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
         [t_lo, t_hi] = [t_hi, t_lo];
       }
       
+      // Construct final root function values for error reporting
+      const f_lo = t_lo - t_target;
+      const f_hi = t_hi - t_target;
+      
       throw { 
         message: "Target time out of bracket", 
         devNote: { 
@@ -197,6 +204,8 @@ export function solveOrificeDfromT(inputs: ComputeInputs): { D: number; sampling
           t_target_s: t_target, 
           t_lo, 
           t_hi, 
+          f_lo,
+          f_hi,
           A_lo_m2: A_lo, 
           A_hi_m2: A_hi,
           bracket_expansions: expansions
