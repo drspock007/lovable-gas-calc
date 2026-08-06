@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator as CalculatorIcon, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { ModeSelector, ProcessType, SolveForType, ModelSelectionType } from '@/components/ModeSelector';
@@ -10,10 +9,8 @@ import { ExplainCard } from '@/components/ExplainCard';
 import { ExamplePresets } from '@/components/ExamplePresets';
 import { StickyBottomBar } from '@/components/StickyBottomBar';
 import { SafetyFooter } from '@/components/SafetyFooter';
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { LanguageToggle } from '@/components/LanguageToggle';
 import { PWAUpdateManager } from '@/components/PWAUpdateManager';
-import { PWAInstructions, LighthousePWAScore } from '@/components/PWAInstructions';
+import { PWAInstructions } from '@/components/PWAInstructions';
 import SEOHead from '@/components/SEOHead';
 import { useI18n } from '@/i18n/context';
 import { deserializeInputsFromURL } from '@/lib/export';
