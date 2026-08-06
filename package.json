@@ -96,6 +96,7 @@
   "overrides": {
     "postcss": "^8.5.25",
     "picomatch": "^4.0.5",
-    "nanoid": "^3.3.17"
+    "nanoid": "^3.3.17",
+    "@babel/runtime": "^7.29.7"
   }
 }
