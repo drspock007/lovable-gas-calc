@@ -150,7 +150,7 @@ export const translations = {
   en: {
     // App & Navigation
     appTitle: 'Gas Transfer Calculator',
-    appSubtitle: 'Capillary and orifice flow for rigid vessels',
+    appSubtitle: 'Capillary and orifice gas flow calculator for rigid vessels',
     
     // Mode Selection
     process: 'Process',
