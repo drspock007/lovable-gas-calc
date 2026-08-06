@@ -691,13 +691,6 @@ export const Calculator: React.FC = () => {
     }
   };
 
-  const handleLanguageToggle = () => {
-    const languages: Array<'en' | 'fr' | 'it'> = ['en', 'fr', 'it'];
-    const currentIndex = languages.indexOf(language);
-    const nextLanguage = languages[(currentIndex + 1) % languages.length];
-    setLanguage(nextLanguage);
-  };
-
   // Mode-aware disabled logic - only block on genuine physics impossibility
   const disabled = useMemo(() => {
     if (debugMode && inputValues.P2 != null) {
