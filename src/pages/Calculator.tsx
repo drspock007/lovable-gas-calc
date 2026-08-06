@@ -754,109 +754,77 @@ export const Calculator: React.FC = () => {
 
   return (
     <PWAUpdateManager>
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
+      <div className="pb-32">
         <SEOHead />
-        
-        <div className="container mx-auto px-4 py-8 pb-32">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 border border-primary/20">
-                <CalculatorIcon className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold gradient-text">{t('appTitle')}</h1>
-                <p className="text-muted-foreground">{t('appSubtitle')}</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              {/* Debug Quick Test Button - Only visible in debug mode */}
-              {(debugMode || new URLSearchParams(window.location.search).get('debug') === '1') && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleQuickFillTest}
-                  className="text-xs px-3 py-1 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-950"
-                >
-                  🧪 Test Case (4L/CH₄/175s)
-                </Button>
-              )}
-              
-              <LanguageToggle />
-              <ThemeToggle />
-            </div>
-          </div>
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-6">
-              <ModeSelector
-                process={process}
-                solveFor={solveFor}
-                modelSelection={modelSelection}
-                onProcessChange={setProcess}
-                onSolveForChange={setSolveFor}
-                onModelSelectionChange={setModelSelection}
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="space-y-6">
+            <ModeSelector
+              process={process}
+              solveFor={solveFor}
+              modelSelection={modelSelection}
+              onProcessChange={setProcess}
+              onSolveForChange={setSolveFor}
+              onModelSelectionChange={setModelSelection}
+            />
+
+            <InputsCard
+              process={process}
+              solveFor={solveFor}
+              values={inputValues}
+              onChange={setInputValues}
+              onSubmit={handleCalculate}
+              loading={loading}
+            />
+
+            {solveFor === 'TfromD' ? (
+              <ResultsTimeFromD
+                result={timeResult}
+                error={error ? { message: error } : null}
+                devNote={devNote}
+                unitTime="s"
+                computeDisabledReason={error ? "Calculation failed" : null}
               />
-              
-              <InputsCard
-                process={process}
+            ) : (
+              <ResultsCard
+                results={results}
                 solveFor={solveFor}
-                values={inputValues}
-                onChange={setInputValues}
-                onSubmit={handleCalculate}
-                loading={loading}
+                inputs={lastComputeInputs}
+                error={error}
+                onRetry={handleRetry}
+                debugMode={debugMode}
+                userLengthUnit="mm"
+                devNote={devNote}
               />
-              
-              {solveFor === 'TfromD' ? (
-                <ResultsTimeFromD 
-                  result={timeResult} 
-                  error={error ? { message: error } : null}
-                  devNote={devNote}
-                  unitTime="s" 
-                  computeDisabledReason={error ? "Calculation failed" : null}
-                />
-              ) : (
-                <ResultsCard 
-                  results={results} 
-                  solveFor={solveFor}
-                  inputs={lastComputeInputs}
-                  error={error}
-                  onRetry={handleRetry}
-                  debugMode={debugMode}
-                  userLengthUnit="mm"
-                  devNote={devNote}
-                />
-              )}
-            </div>
-
-            <div className="space-y-6">
-              <ExamplePresets onLoadPreset={(inputs, newProcess, newSolveFor) => {
-                if (newProcess) setProcess(newProcess);
-                if (newSolveFor) setSolveFor(newSolveFor);
-                setInputValues(prev => ({ ...prev, ...inputs }));
-              }} />
-              <ExplainCard />
-              <DevPanel />
-            </div>
+            )}
           </div>
 
-          {/* PWA Instructions */}
-          <div className="mt-8">
-            <PWAInstructions />
+          <div className="space-y-6">
+            <ExamplePresets onLoadPreset={(inputs, newProcess, newSolveFor) => {
+              if (newProcess) setProcess(newProcess);
+              if (newSolveFor) setSolveFor(newSolveFor);
+              setInputValues(prev => ({ ...prev, ...inputs }));
+            }} />
+            <ExplainCard />
+            <DevPanel />
           </div>
-          {/* Safety Footer */}
-          <SafetyFooter />
-
-          {/* Sticky Bottom Bar */}
-          <StickyBottomBar
-            onCalculate={handleCalculate}
-            onClear={handleClear}
-            loading={loading}
-            disabled={disabled}
-          />
         </div>
+
+        {/* PWA Instructions */}
+        <div className="mt-8">
+          <PWAInstructions />
+        </div>
+        {/* Safety Footer */}
+        <SafetyFooter />
+
+        {/* Sticky Bottom Bar */}
+        <StickyBottomBar
+          onCalculate={handleCalculate}
+          onClear={handleClear}
+          loading={loading}
+          disabled={disabled}
+        />
       </div>
     </PWAUpdateManager>
   );
