@@ -36,6 +36,7 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
             size="lg"
             className="touch-target flex-shrink-0"
             disabled={loading}
+            aria-label="Clear all inputs"
           >
             <RotateCcw className="w-4 h-4" />
           </Button>
