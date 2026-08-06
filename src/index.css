@@ -164,7 +164,7 @@
   }
 
   .gradient-text {
-    @apply bg-gradient-to-r from-primary-strong to-primary bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-[hsl(var(--primary-strong))] to-[hsl(var(--primary))] bg-clip-text text-transparent;
   }
 
   .mobile-container {
