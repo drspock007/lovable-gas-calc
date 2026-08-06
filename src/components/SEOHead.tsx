@@ -18,8 +18,11 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
   
   const seoTitle = title || t('appTitle');
   const seoDescription = description || t('appSubtitle');
-  const seoImage = image || '/icon-512.png';
-  const seoUrl = url || window.location.href;
+  // Social crawlers require absolute URLs, relative paths are not resolved
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://lovable-gas-calc.lovable.app';
+  const rawImage = image || '/icon-512.png';
+  const seoImage = rawImage.startsWith('http') ? rawImage : `${origin}${rawImage}`;
+  const seoUrl = url || (typeof window !== 'undefined' ? window.location.href : origin);
   
   React.useEffect(() => {
     // Update document title

@@ -287,6 +287,7 @@ export const ResultsCard: React.FC<ResultsCardProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => copyToClipboard(formatResultText())}
+              aria-label="Copy results to clipboard"
             >
               <Copy className="w-4 h-4" />
             </Button>
