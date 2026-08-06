@@ -757,6 +757,8 @@ export const Calculator: React.FC = () => {
       <div className="pb-32">
         <SEOHead />
 
+        <h1 className="sr-only">{t('appTitle')} — {t('appSubtitle')}</h1>
+
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-6">
