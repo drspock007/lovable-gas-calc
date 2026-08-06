@@ -32,7 +32,7 @@ export const SafetyFooter: React.FC = () => {
             </div>
             <div className="pt-2 border-t border-border/50">
               <p className="text-xs text-muted-foreground">
-                Version 1.0 • Last updated: September 2024 • 
+                Version 1.0 • Last updated: August {new Date().getFullYear()} • 
                 <a href="#" className="text-primary hover:underline">Report Issues</a>
               </p>
             </div>
