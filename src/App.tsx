@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect } from "react";
 import { registerServiceWorker, setupPWAInstall } from "@/lib/pwa";
 import { DebugProvider } from "@/lib/debug-context";
+import { ThemeProvider } from "@/components/theme-provider";
+import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
@@ -19,21 +21,25 @@ const App = () => {
   }, []);
 
   return (
-  <QueryClientProvider client={queryClient}>
-    <DebugProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </DebugProvider>
-  </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <DebugProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Layout>
+            </BrowserRouter>
+          </TooltipProvider>
+        </DebugProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 };
 
