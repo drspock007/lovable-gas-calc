@@ -366,6 +366,7 @@ export const ExamplePresets: React.FC<ExamplePresetsProps> = ({ onLoadPreset }) 
                     variant="outline"
                     size="sm"
                     onClick={() => setExpandedPreset(expandedPreset === preset.id ? null : preset.id)}
+                    aria-label={`Show details for ${preset.name}`}
                   >
                     <Settings className="w-4 h-4" />
                   </Button>
